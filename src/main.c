@@ -11,6 +11,8 @@
 #include <unistd.h>
 
 #define BUFFER_SIZE 4096
+#define MAX_PATH_SIZE 512
+#define MAX_HEADER_SIZE 1024
 
 typedef struct {
   const char *extension;
@@ -49,7 +51,7 @@ void get_http_date(char *buffer, size_t buffer_size) {
 }
 
 void send_error_response(int client_fd, int status_code, const char *message) {
-  char header[BUFFER_SIZE];
+  char header[MAX_HEADER_SIZE];
   char date[128];
   get_http_date(date, sizeof(date));
   snprintf(header, sizeof(header),
@@ -73,10 +75,14 @@ void send_file(const char *path, int client_fd) {
   }
 
   struct stat st;
-  stat(path, &st);
-  const char *mime_type = get_mime_type(path);
+  if (stat(path, &st) != 0) {
+    fclose(file);
+    send_error_response(client_fd, 404, "File not found");
+    return;
+  }
 
-  char header[BUFFER_SIZE];
+  const char *mime_type = get_mime_type(path);
+  char header[MAX_HEADER_SIZE];
   snprintf(header, sizeof(header),
            "HTTP/1.0 200 OK\r\n"
            "Content-Type: %s\r\n"
@@ -99,7 +105,7 @@ void send_directory_listing(const char *path, int client_fd) {
   char date[128];
   get_http_date(date, sizeof(date));
 
-  char header[BUFFER_SIZE];
+  char header[MAX_HEADER_SIZE];
   snprintf(header, sizeof(header),
            "HTTP/1.0 200 OK\r\n"
            "Content-Type: text/html\r\n"
@@ -127,6 +133,7 @@ void send_directory_listing(const char *path, int client_fd) {
              entry->d_name, entry->d_name);
     send(client_fd, buffer, strlen(buffer), 0);
   }
+
   closedir(dir);
 
   snprintf(buffer, sizeof(buffer), "</ul></body></html>");
@@ -138,13 +145,19 @@ int sanitize_path(const char *base_dir, const char *requested_path,
   if (strstr(requested_path, "..")) {
     return 0; // reject paths with ".."
   }
-  snprintf(full_path, size, "%s%s", base_dir, requested_path);
+
+  size_t required_size =
+      snprintf(full_path, size, "%s%s", base_dir, requested_path);
+  if (required_size >= size) {
+    return 0; // path too long
+  }
+
   return 1;
 }
 
 int main(int argc, char *argv[]) {
   char address[INET_ADDRSTRLEN] = "0.0.0.0";
-  char directory[256] = ".";
+  char directory[MAX_PATH_SIZE] = ".";
   int port = 8000;
 
   for (int i = 1; i < argc; ++i) {
@@ -210,10 +223,10 @@ int main(int argc, char *argv[]) {
     buffer[bytes_read] = '\0';
     printf("Request:\n%s\n", buffer);
 
-    char method[16], path[256], version[16];
+    char method[16], path[MAX_PATH_SIZE], version[16];
     sscanf(buffer, "%15s %255s %15s", method, path, version);
 
-    char full_path[512];
+    char full_path[MAX_PATH_SIZE];
     if (strcasecmp(method, "GET") != 0) {
       send_error_response(client_fd, 405, "Method Not Allowed");
     } else if (!sanitize_path(directory, path, full_path, sizeof(full_path))) {
@@ -222,13 +235,14 @@ int main(int argc, char *argv[]) {
       struct stat st;
       if (stat(full_path, &st) == 0) {
         if (S_ISDIR(st.st_mode)) {
-          char index_path[512];
+          char index_path[MAX_PATH_SIZE];
           if (strlen(full_path) + strlen("/index.html") + 1 >
               sizeof(index_path)) {
             send_error_response(client_fd, 414, "Request-URI Too Long");
             close(client_fd);
             continue;
           }
+
           snprintf(index_path, sizeof(index_path), "%s/index.html", full_path);
           if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
             send_file(index_path, client_fd);
