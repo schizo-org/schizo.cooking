@@ -262,7 +262,7 @@ int main(int argc, char *argv[]) {
       if (S_ISDIR(st.st_mode)) {
         char index_path[MAX_PATH_SIZE];
         if (snprintf(index_path, sizeof(index_path), "%s/index.html",
-                     full_path) >= sizeof(index_path)) {
+                     full_path) >= (int)sizeof(index_path)) {
           send_error_response(client_fd, 414, "Request-URI Too Long");
           close(client_fd);
           continue;
