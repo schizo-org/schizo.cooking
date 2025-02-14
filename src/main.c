@@ -146,7 +146,7 @@ void send_directory_listing(const char *path, int client_fd) {
 // This should be a very basic way of catching directory traversal
 // attempts, but I'm sure there is something I'm missing here.
 int sanitize_path(const char *base_dir, const char *requested_path,
-                  char *full_path, size_t size) {
+                  char *full_path) {
   if (requested_path[0] != '/') {
     return 0;
   }
@@ -255,7 +255,7 @@ int main(int argc, char *argv[]) {
     }
 
     char full_path[MAX_PATH_SIZE];
-    if (!sanitize_path(directory, path, full_path, sizeof(full_path))) {
+    if (!sanitize_path(directory, path, full_path)) {
       send_error_response(client_fd, 403, "Forbidden");
       close(client_fd);
       continue;
