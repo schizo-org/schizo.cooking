@@ -142,23 +142,27 @@ void send_directory_listing(const char *path, int client_fd) {
   send(client_fd, buffer, strlen(buffer), 0);
 }
 
-// Validate the requested path:
-//  - Disallow ".." to prevent directory traversal.
-//  - Ensure that the path starts with '/'.
+// Validate the requested path.
 // This should be a very basic way of catching directory traversal
 // attempts, but I'm sure there is something I'm missing here.
 int sanitize_path(const char *base_dir, const char *requested_path,
                   char *full_path, size_t size) {
-  if (strstr(requested_path, "..") || requested_path[0] != '/') {
-    return 0; // Reject invalid or traversal paths.
+  if (requested_path[0] != '/') {
+    return 0;
   }
 
-  // Build full path as base_dir + requested_path.
-  size_t required_size =
-      snprintf(full_path, size, "%s%s", base_dir, requested_path);
-  if (required_size >= size) {
-    return 0; // Path too long.
+  char resolved_path[MAX_PATH_SIZE];
+  snprintf(resolved_path, sizeof(resolved_path), "%s%s", base_dir,
+           requested_path);
+
+  if (!realpath(resolved_path, full_path)) {
+    return 0;
   }
+
+  if (strncmp(full_path, base_dir, strlen(base_dir)) != 0) {
+    return 0;
+  }
+
   return 1;
 }
 
