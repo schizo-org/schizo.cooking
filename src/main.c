@@ -147,19 +147,47 @@ void send_directory_listing(const char *path, int client_fd) {
 // attempts, but I'm sure there is something I'm missing here.
 int sanitize_path(const char *base_dir, const char *requested_path,
                   char *full_path) {
+  if (strcmp(requested_path, "/") == 0) {
+    snprintf(full_path, MAX_PATH_SIZE, "%s", base_dir);
+    return 1;
+  }
+
+  // If requested path is not rooted, reject it
   if (requested_path[0] != '/') {
     return 0;
   }
 
+  char absolute_base_dir[MAX_PATH_SIZE];
+  if (strcmp(base_dir, ".") == 0) {
+    if (!getcwd(absolute_base_dir, sizeof(absolute_base_dir))) {
+      perror("getcwd failed");
+      return 0;
+    }
+    base_dir = absolute_base_dir;
+  }
+
   char resolved_path[MAX_PATH_SIZE];
+
   snprintf(resolved_path, sizeof(resolved_path), "%s%s", base_dir,
            requested_path);
 
   if (!realpath(resolved_path, full_path)) {
+    perror("realpath failed");
     return 0;
   }
 
-  if (strncmp(full_path, base_dir, strlen(base_dir)) != 0) {
+  size_t base_len = strlen(base_dir);
+  if (base_len > 1 && base_dir[base_len - 1] == '/') {
+    base_len--;
+  }
+
+  if (strncmp(full_path, base_dir, base_len) != 0) {
+    printf("Path outside base directory: %s\n", full_path);
+    return 0;
+  }
+
+  if (full_path[base_len] != '/') {
+    printf("Path does not start with base_dir: %s\n", full_path);
     return 0;
   }
 
