@@ -186,11 +186,6 @@ int sanitize_path(const char *base_dir, const char *requested_path,
     return 0;
   }
 
-  if (full_path[base_len] != '/') {
-    printf("Path does not start with base_dir: %s\n", full_path);
-    return 0;
-  }
-
   return 1;
 }
 
@@ -293,12 +288,8 @@ int main(int argc, char *argv[]) {
     if (stat(full_path, &st) == 0) {
       if (S_ISDIR(st.st_mode)) {
         char index_path[MAX_PATH_SIZE];
-        if (snprintf(index_path, sizeof(index_path), "%s/index.html",
-                     full_path) >= (int)sizeof(index_path)) {
-          send_error_response(client_fd, 414, "Request-URI Too Long");
-          close(client_fd);
-          continue;
-        }
+        snprintf(index_path, sizeof(index_path), "%s/index.html", full_path);
+
         if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
           send_file(index_path, client_fd);
         } else {
