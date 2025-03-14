@@ -70,11 +70,13 @@ void inline_parse(const char *in, char *out, size_t out_size) {
       while (openTag[k] && j < out_size - 1)
         out[j++] = openTag[k++];
       i++;
+
       while (in[i] != '`' && in[i] != '\0') {
         out[j++] = in[i++];
         if (j >= out_size - 1)
           break;
       }
+
       if (in[i] == '`') {
         const char *closeTag = "</code>";
         k = 0;
@@ -82,6 +84,7 @@ void inline_parse(const char *in, char *out, size_t out_size) {
           out[j++] = closeTag[k++];
         i++;
       }
+
       continue;
     }
 
@@ -174,7 +177,8 @@ void block_parse(const char *input, char *output, size_t out_size) {
       inline_parse(line + content_start, inline_output, sizeof(inline_output));
 
       char header_html[LINE_BUFFER_SIZE];
-      snprintf(header_html, sizeof(header_html), "<%s>%s</%s>\n", tag,
+      snprintf(header_html, sizeof(header_html),
+               "<%s class=\"header-%d\">%s</%s>\n", tag, header_level,
                inline_output, tag);
       strncat(output, header_html, out_size - strlen(output) - 1);
       continue;
@@ -184,7 +188,7 @@ void block_parse(const char *input, char *output, size_t out_size) {
     if (line[0] == '>') {
       char blockquote_html[LINE_BUFFER_SIZE];
       snprintf(blockquote_html, sizeof(blockquote_html),
-               "<blockquote>%s</blockquote>\n", line + 2);
+               "<blockquote class=\"blockquote\">%s</blockquote>\n", line + 2);
       strncat(output, blockquote_html, out_size - strlen(output) - 1);
       continue;
     }
@@ -193,7 +197,8 @@ void block_parse(const char *input, char *output, size_t out_size) {
       char inline_output[LINE_BUFFER_SIZE] = {0};
       inline_parse(line + 2, inline_output, sizeof(inline_output));
       char list_item[LINE_BUFFER_SIZE];
-      snprintf(list_item, sizeof(list_item), "<li>%s</li>\n", inline_output);
+      snprintf(list_item, sizeof(list_item),
+               "<li class=\"list-item\">%s</li>\n", inline_output);
       strncat(output, list_item, out_size - strlen(output) - 1);
       continue;
     }
@@ -202,7 +207,8 @@ void block_parse(const char *input, char *output, size_t out_size) {
       char inline_output[LINE_BUFFER_SIZE] = {0};
       inline_parse(line, inline_output, sizeof(inline_output));
       char paragraph[LINE_BUFFER_SIZE];
-      snprintf(paragraph, sizeof(paragraph), "<p>%s</p>\n", inline_output);
+      snprintf(paragraph, sizeof(paragraph), "<p class=\"paragraph\">%s</p>\n",
+               inline_output);
       strncat(output, paragraph, out_size - strlen(output) - 1);
     } else {
       // Blank line.
@@ -214,16 +220,26 @@ void block_parse(const char *input, char *output, size_t out_size) {
 // Converts a markdown string into HTML
 // Caller must provide an output buffer (html) of at least html_size bytes
 // or suffer the consequences
-void md_to_html(const char *markdown, char *html, size_t html_size) {
+void md_to_html(const char *markdown, char *html, size_t html_size,
+                const char *css_file) {
   if (!html || html_size == 0)
     return;
-  html[0] = '\0';
-  block_parse(markdown, html, html_size);
+
+  snprintf(html, html_size, "<!DOCTYPE html><html><head>");
+  if (css_file && strlen(css_file) > 0) {
+    snprintf(html + strlen(html), html_size - strlen(html),
+             "<link rel=\"stylesheet\" href=\"%s\">", css_file);
+  }
+
+  snprintf(html + strlen(html), html_size - strlen(html), "</head><body>");
+
+  block_parse(markdown, html + strlen(html), html_size - strlen(html));
+  strncat(html, "</body></html>", html_size - strlen(html) - 1);
 }
 
 // Convert a markdown file to an HTML file
 int md_file_to_html_file(const char *input_filename,
-                         const char *output_filename) {
+                         const char *output_filename, const char *css_file) {
   FILE *fin = fopen(input_filename, "r");
   if (!fin)
     return -1;
@@ -237,6 +253,7 @@ int md_file_to_html_file(const char *input_filename,
     fclose(fin);
     return -2;
   }
+
   fread(markdown, 1, filesize, fin);
   markdown[filesize] = '\0';
   fclose(fin);
@@ -246,9 +263,9 @@ int md_file_to_html_file(const char *input_filename,
     free(markdown);
     return -3;
   }
-  html_output[0] = '\0';
 
-  md_to_html(markdown, html_output, OUTPUT_BUFFER_SIZE);
+  html_output[0] = '\0';
+  md_to_html(markdown, html_output, OUTPUT_BUFFER_SIZE, css_file);
 
   FILE *fout = fopen(output_filename, "w");
   if (!fout) {
@@ -267,9 +284,9 @@ int md_file_to_html_file(const char *input_filename,
 
 // Process multiple markdown files
 int md_files_to_html_files(const char **input_files, const char **output_files,
-                           int count) {
+                           int count, const char *css_file) {
   for (int i = 0; i < count; i++) {
-    if (md_file_to_html_file(input_files[i], output_files[i]) != 0) {
+    if (md_file_to_html_file(input_files[i], output_files[i], css_file) != 0) {
       return -1;
     }
   }
