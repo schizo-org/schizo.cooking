@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,9 +10,17 @@
 // - Italic: *text*
 // - Inline code: `code`
 // - Links: [text](url)
+// - Escape characters: \*, \_, \#, etc.
 void inline_parse(const char *in, char *out, size_t out_size) {
   size_t i = 0, j = 0;
   while (in[i] && j < out_size - 1) {
+    if (in[i] == '\\') {
+      if (in[i + 1]) { // add the escaped character as is
+        out[j++] = in[i + 1];
+        i += 2;
+        continue;
+      }
+    }
     if (in[i] == '*' && in[i + 1] == '*') {
       const char *openTag = "<b>";
       size_t k = 0;
@@ -115,6 +122,7 @@ void inline_parse(const char *in, char *out, size_t out_size) {
 // - Headers (lines beginning with one or more '#' characters)
 // - Code blocks (fenced with ```)
 // - List items (lines starting with "- " or "* ")
+// - Blockquotes (lines starting with '> ')
 // - Paragraphs (all other non-empty lines)
 void block_parse(const char *input, char *output, size_t out_size) {
   char line[LINE_BUFFER_SIZE];
@@ -171,6 +179,15 @@ void block_parse(const char *input, char *output, size_t out_size) {
       continue;
     }
 
+    // Blockquote
+    if (line[0] == '>') {
+      char blockquote_html[LINE_BUFFER_SIZE];
+      snprintf(blockquote_html, sizeof(blockquote_html),
+               "<blockquote>%s</blockquote>\n", line + 2);
+      strncat(output, blockquote_html, out_size - strlen(output) - 1);
+      continue;
+    }
+
     if ((line[0] == '-' || line[0] == '*') && line[1] == ' ') {
       char inline_output[LINE_BUFFER_SIZE] = {0};
       inline_parse(line + 2, inline_output, sizeof(inline_output));
@@ -212,8 +229,8 @@ int md_file_to_html_file(const char *input_filename,
 
   fseek(fin, 0, SEEK_END);
   long filesize = ftell(fin);
-  fseek(fin, 0, SEEK_SET);
 
+  fseek(fin, 0, SEEK_SET);
   char *markdown = malloc(filesize + 1);
   if (!markdown) {
     fclose(fin);
@@ -229,14 +246,15 @@ int md_file_to_html_file(const char *input_filename,
     return -3;
   }
   html_output[0] = '\0';
-  md_to_html(markdown, html_output, OUTPUT_BUFFER_SIZE);
 
+  md_to_html(markdown, html_output, OUTPUT_BUFFER_SIZE);
   FILE *fout = fopen(output_filename, "w");
   if (!fout) {
     free(markdown);
     free(html_output);
     return -4;
   }
+
   fputs(html_output, fout);
   fclose(fout);
 
@@ -255,24 +273,3 @@ int md_files_to_html_files(const char **input_files, const char **output_files,
   }
   return 0;
 }
-
-// Low-effort testing implementation. Can be done better, but I don't care
-// to improve it. Compile with -DMD_PARSER_TEST, run as you would normally.
-#ifdef MD_PARSER_TEST
-int main(void) {
-  const char *markdown_text =
-      "# Hello World\n"
-      "This is **bold** and this is *italic*.\n"
-      "Here is a link: [Google](https://www.google.com).\n"
-      "Inline code: `printf(\"Hello, world!\");`\n"
-      "```\n"
-      "int main() {\n    return 0;\n}\n"
-      "```\n"
-      "- List item 1\n- List item 2\n";
-
-  char html_output[OUTPUT_BUFFER_SIZE] = {0};
-  md_to_html(markdown_text, html_output, sizeof(html_output));
-  printf("%s\n", html_output);
-  return 0;
-}
-#endif
