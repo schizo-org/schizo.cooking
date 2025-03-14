@@ -41,8 +41,7 @@ void test_md_to_html(void) {
   assert(strstr(html_output_with_css,
                 "<link rel=\"stylesheet\" href=\"test.css\">") != NULL);
 
-  assert(strstr(html_output_with_css,
-                "<h1 class=\"header-1\">Hello World</h1>") != NULL);
+  assert(strstr(html_output_with_css, "<h1>Hello World</h1>") != NULL);
   assert(strstr(html_output_with_css, "<b>bold</b>") != NULL);
   assert(strstr(html_output_with_css, "<i>italic</i>") != NULL);
   assert(strstr(html_output_with_css,
@@ -53,13 +52,12 @@ void test_md_to_html(void) {
          NULL); // code block start
   assert(strstr(html_output_with_css, "</code></pre>") !=
          NULL); // code block end
-  assert(strstr(html_output_with_css,
-                "<li class=\"list-item\">List item 1</li>") != NULL);
-  assert(strstr(html_output_with_css, "<blockquote class=\"blockquote\">This "
+  assert(strstr(html_output_with_css, "<li>List item 1</li>") != NULL);
+  assert(strstr(html_output_with_css, "<blockquote>This "
                                       "is a blockquote.</blockquote>") != NULL);
 
   assert(strstr(html_output_without_css,
-                "<h1 class=\"header-1\">Hello World</h1>") != NULL);
+                "<h1>Hello World</h1>") != NULL);
   assert(strstr(html_output_without_css, "<b>bold</b>") != NULL);
   assert(strstr(html_output_without_css, "<i>italic</i>") != NULL);
   assert(strstr(html_output_without_css,
@@ -71,9 +69,9 @@ void test_md_to_html(void) {
   assert(strstr(html_output_without_css, "</code></pre>") !=
          NULL); // code block end
   assert(strstr(html_output_without_css,
-                "<li class=\"list-item\">List item 1</li>") != NULL);
+                "<li>List item 1</li>") != NULL);
   assert(strstr(html_output_without_css,
-                "<blockquote class=\"blockquote\">This "
+                "<blockquote>This "
                 "is a blockquote.</blockquote>") != NULL);
 
   assert(strstr(html_output_without_css,
