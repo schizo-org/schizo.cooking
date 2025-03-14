@@ -178,8 +178,7 @@ void block_parse(const char *input, char *output, size_t out_size) {
 
       char header_html[LINE_BUFFER_SIZE];
       snprintf(header_html, sizeof(header_html),
-               "<%s class=\"header-%d\">%s</%s>\n", tag, header_level,
-               inline_output, tag);
+               "<%s>%s</%s>\n", tag, inline_output, tag);
       strncat(output, header_html, out_size - strlen(output) - 1);
       continue;
     }
@@ -188,7 +187,7 @@ void block_parse(const char *input, char *output, size_t out_size) {
     if (line[0] == '>') {
       char blockquote_html[LINE_BUFFER_SIZE];
       snprintf(blockquote_html, sizeof(blockquote_html),
-               "<blockquote class=\"blockquote\">%s</blockquote>\n", line + 2);
+               "<blockquote>%s</blockquote>\n", line + 2);
       strncat(output, blockquote_html, out_size - strlen(output) - 1);
       continue;
     }
@@ -198,7 +197,7 @@ void block_parse(const char *input, char *output, size_t out_size) {
       inline_parse(line + 2, inline_output, sizeof(inline_output));
       char list_item[LINE_BUFFER_SIZE];
       snprintf(list_item, sizeof(list_item),
-               "<li class=\"list-item\">%s</li>\n", inline_output);
+               "<li>%s</li>\n", inline_output);
       strncat(output, list_item, out_size - strlen(output) - 1);
       continue;
     }
@@ -207,7 +206,7 @@ void block_parse(const char *input, char *output, size_t out_size) {
       char inline_output[LINE_BUFFER_SIZE] = {0};
       inline_parse(line, inline_output, sizeof(inline_output));
       char paragraph[LINE_BUFFER_SIZE];
-      snprintf(paragraph, sizeof(paragraph), "<p class=\"paragraph\">%s</p>\n",
+      snprintf(paragraph, sizeof(paragraph), "<p>%s</p>\n",
                inline_output);
       strncat(output, paragraph, out_size - strlen(output) - 1);
     } else {
