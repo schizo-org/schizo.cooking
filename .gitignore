@@ -1,1 +1,7 @@
+# Ignore build artifacts, etc.
 marker
+*.o
+*.a
+
+# Test outputs
+tests/*_test
