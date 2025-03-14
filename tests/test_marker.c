@@ -5,7 +5,10 @@
 
 #define OUTPUT_BUFFER_SIZE 8192
 
-// Low-effort testing implementation. Can be done better, but I don't care.
+// Low-effort testing implementation. Can be done better, but I don't care to
+// improve it. You may try to make the tests more robust, but know that I will
+// dropkick you if you try to parse HTML with regex.
+// https://stackoverflow.com/questions/1732348/regex-match-open-tags-except-xhtml-self-contained-tags
 void test_md_to_html(void) {
   const char *markdown_text =
       "# Hello World\n"
