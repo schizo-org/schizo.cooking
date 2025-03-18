@@ -9,16 +9,19 @@
  * @param markdown The Markdown input string to convert to HTML
  * @param html The output buffer where the generated HTML will be stored
  * @param html_size The size of the output buffer (html)
+ * @param css_file The optional CSS file to include in the HTML output. Pass
+ *        NULL to omit.
  *
  * @note The function does not perform any bounds checking for `markdown` or
- * `html_size`. Ensure that the output buffer is large enough to accommodate the
- * generated HTML or suffer the consequences of your own actions.
+ *       `html_size`. Ensure that the output buffer is large enough to
+ *        accommodate the generated HTML or suffer the consequences of your own
+ *        actions.
  */
-void md_to_html(const char *markdown, char *html, size_t html_size);
+void md_to_html(const char *markdown, char *html, size_t html_size,
+                const char *css_file);
 
 /**
  * Converts a Markdown file to an HTML file
- *
  *
  * @param input_filename The name of the Markdown input file
  * @param output_filename The name of the output HTML file
