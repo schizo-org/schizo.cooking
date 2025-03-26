@@ -20,4 +20,4 @@ We can somewhat reliably parse the following:
 ## Testing
 
 A very basic test is included, but it will not assert anything. Please review
-thee HTML output manually.
+the HTML output manually.
