@@ -47,16 +47,27 @@ This will:
 - Convert them to HTML in `./public_html` (preserving directory structure)
 - Serve the HTML files at `http://localhost:8081/`
 
-## Unicode and Non-ASCII Filenames
+## Additional Notes
 
-> [!WARNING]
-> Quickie uses POSIX APIs (`opendir`, `readdir`, `stat`, etc.) and `char *` for
-> filenames, which means UTF-8 and non-ASCII filenames are supported as opaque
-> byte strings on Linux. Thus, there is no ASCII-only logic. Also, **path length
-> limits are enforced in bytes**, so multi-byte UTF-8 filenames may hit the
-> buffer limit much sooner. Fret not though; if your locale and filesystem
-> support UTF-8, Quickie will handle such filenames correctly. Works on my
-> machine.
+Those only apply if you plan to ~~have a quickie~~ run this program on your
+system.
+
+### Unicode and Non-ASCII Filenames
+
+Quickie uses POSIX APIs (`opendir`, `readdir`, `stat`, etc.) and `char *` for
+filenames, which means UTF-8 and non-ASCII filenames are supported as opaque
+byte strings on Linux. Thus, there is no ASCII-only logic. Also, **path length
+limits are enforced in bytes**, so multi-byte UTF-8 filenames may hit the buffer
+limit much sooner. Fret not though; if your locale and filesystem support UTF-8,
+Quickie will handle such filenames correctly. Works on my machine.
+
+### Concurrency Safety
+
+Quickie is **not safe for concurrent execution** on the same HTML output
+directory. If multiple instances run at the same time, you may get race
+conditions or inconsistent output. Always run only one instance at a time per
+output directory. Though I don't really know why you would run multiple
+instances of this.
 
 ## License
 
