@@ -163,10 +163,26 @@ void quickie_convert_all(const char *md_base_dir, const char *html_base_dir,
       *slash = '/';
     }
 
-    int res = md_file_to_html_file(md_full, html_full, css_file);
-    if (res != 0) {
-      fprintf(stderr, "Failed to convert %s to HTML (error %d)\n", md_full,
-              res);
+    // Write to temp file first, then (atomically) rename
+    char html_tmp[QUICKIE_MAX_PATH];
+    int html_tmp_len = snprintf(html_tmp, sizeof(html_tmp), "%s.tmp", html_full);
+    if (html_tmp_len < 0 || html_tmp_len >= (int)sizeof(html_tmp)) {
+      fprintf(stderr, "Temp HTML file path too long: %s.tmp\n", html_full);
+      continue;
+    }
+
+    int res = md_file_to_html_file(md_full, html_tmp, css_file);
+    if (res == 0) {
+      if (rename(html_tmp, html_full) != 0) {
+        fprintf(stderr, "Failed to rename temp file %s to %s: %s\n", html_tmp, html_full, strerror(errno));
+        // Remove temp file if rename fails
+        unlink(html_tmp);
+        continue;
+      }
+    } else {
+      fprintf(stderr, "Failed to convert %s to HTML (error %d)\n", md_full, res);
+      // Remove temp file if conversion failed
+      unlink(html_tmp);
     }
   }
 }
