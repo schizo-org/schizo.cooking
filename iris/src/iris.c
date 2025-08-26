@@ -1,10 +1,13 @@
+#define _POSIX_C_SOURCE 200112L
 #include "iris.h"
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <netinet/in.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -39,7 +42,15 @@ const char *iris_get_mime_type(const char *path) {
 void iris_get_http_date(char *buffer, size_t buffer_size) {
   time_t now = time(NULL);
   struct tm tm_now;
+#if defined(_POSIX_VERSION)
   gmtime_r(&now, &tm_now);
+#else
+  struct tm *tmptr = gmtime(&now);
+  if (tmptr)
+    tm_now = *tmptr;
+  else
+    memset(&tm_now, 0, sizeof(tm_now));
+#endif
   strftime(buffer, buffer_size, "%a, %d %b %Y %H:%M:%S GMT", &tm_now);
 }
 
