@@ -47,6 +47,17 @@ This will:
 - Convert them to HTML in `./public_html` (preserving directory structure)
 - Serve the HTML files at `http://localhost:8081/`
 
+## Unicode and Non-ASCII Filenames
+
+> [!WARNING]
+> Quickie uses POSIX APIs (`opendir`, `readdir`, `stat`, etc.) and `char *` for
+> filenames, which means UTF-8 and non-ASCII filenames are supported as opaque
+> byte strings on Linux. Thus, there is no ASCII-only logic. Also, **path length
+> limits are enforced in bytes**, so multi-byte UTF-8 filenames may hit the
+> buffer limit much sooner. Fret not though; if your locale and filesystem
+> support UTF-8, Quickie will handle such filenames correctly. Works on my
+> machine.
+
 ## License
 
 Quickie is licensed under Mozilla Public License Version 2.0. Please see
