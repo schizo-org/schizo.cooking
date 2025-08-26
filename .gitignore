@@ -1,0 +1,7 @@
+# oo ii aa ee
+**/*.o
+**/*.a
+
+/iris/iris
+/marker/marker
+/quickie/quickie
