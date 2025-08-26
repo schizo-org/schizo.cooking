@@ -25,6 +25,7 @@ void md_to_html(const char *markdown, char *html, size_t html_size,
  *
  * @param input_filename The name of the Markdown input file
  * @param output_filename The name of the output HTML file
+ * @param css_file The optional CSS file to include in the HTML output. Pass NULL to omit.
  *
  * @return 0 on success, a negative value on failure:
  *         - -1: Failed to open input file
@@ -33,7 +34,8 @@ void md_to_html(const char *markdown, char *html, size_t html_size,
  *         - -4: Failed to open output file
  */
 int md_file_to_html_file(const char *input_filename,
-                         const char *output_filename);
+                         const char *output_filename,
+                         const char *css_file);
 
 /**
  * Converts multiple Markdown files to HTML files.
@@ -41,11 +43,12 @@ int md_file_to_html_file(const char *input_filename,
  * @param input_files An array of pointers to the Markdown input filenames
  * @param output_files An array of pointers to the output HTML filenames
  * @param count The number of files to process
+ * @param css_file The optional CSS file to include in the HTML output. Pass NULL to omit.
  *
  * @return 0 on success, a negative value on failure:
  *         - -1: Failure in converting one or more files
  */
 int md_files_to_html_files(const char **input_files, const char **output_files,
-                           int count);
+                           int count, const char *css_file);
 
 #endif // MARKER_H
