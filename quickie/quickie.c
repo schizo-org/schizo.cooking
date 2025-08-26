@@ -83,8 +83,31 @@ typedef struct
   char html_path[QUICKIE_MAX_PATH];
 } quickie_md_html_entry;
 
-static quickie_md_html_entry quickie_entries[QUICKIE_MAX_MD_FILES];
-static int                   quickie_entry_count = 0;
+static quickie_md_html_entry* quickie_entries        = NULL;
+static int                    quickie_entry_count    = 0;
+static int                    quickie_entry_capacity = 0;
+
+#define QUICKIE_INIT_ENTRY_CAPACITY 128
+
+// Ensure quickie_entries is allocated and has space for one more entry
+// You could call it a quickfix. Ha.
+static int quickie_fix_capacity(void)
+{
+  if (quickie_entry_count >= quickie_entry_capacity)
+  {
+    int new_capacity =
+        quickie_entry_capacity > 0 ? quickie_entry_capacity * 2 : QUICKIE_INIT_ENTRY_CAPACITY;
+    void* new_entries = realloc(quickie_entries, new_capacity * sizeof(quickie_md_html_entry));
+    if (!new_entries)
+    {
+      log_error("Failed to allocate memory for markdown file entries (count=%d)", new_capacity);
+      return 0;
+    }
+    quickie_entries        = (quickie_md_html_entry*) new_entries;
+    quickie_entry_capacity = new_capacity;
+  }
+  return 1;
+}
 
 // Recursively scan for .md files in the given directory and fill
 // `quickie_entries`
@@ -147,13 +170,18 @@ void quickie_scan_markdown(const char* md_base_dir, const char* rel_dir)
       else if (S_ISREG(st.st_mode))
       {
         const char* dot = strrchr(entry->d_name, '.');
-        if (dot && strcmp(dot, ".md") == 0 && quickie_entry_count < QUICKIE_MAX_MD_FILES)
+        if (dot && strcmp(dot, ".md") == 0)
         {
+          if (!quickie_fix_capacity())
+          {
+            log_error("Failed to allocate space for new markdown entry: %s", rel_path);
+            continue;
+          }
           int md_path_len = snprintf(quickie_entries[quickie_entry_count].md_path, QUICKIE_MAX_PATH,
                                      "%s", rel_path);
           if (md_path_len < 0 || md_path_len >= QUICKIE_MAX_PATH)
           {
-            fprintf(stderr, "Markdown entry path too long: %s\n", rel_path);
+            log_error("Markdown entry path too long: %s", rel_path);
             continue;
           }
 
@@ -163,7 +191,7 @@ void quickie_scan_markdown(const char* md_base_dir, const char* rel_dir)
                                        QUICKIE_MAX_PATH, "%s", rel_path);
           if (html_path_len < 0 || html_path_len >= QUICKIE_MAX_PATH)
           {
-            fprintf(stderr, "HTML entry path too long: %s\n", rel_path);
+            log_error("HTML entry path too long: %s", rel_path);
             continue;
           }
           char* html_ext = strrchr(quickie_entries[quickie_entry_count].html_path, '.');
@@ -332,5 +360,7 @@ int main(int argc, char* argv[])
     }
   }
 
-  return quickie_serve(address, md_dir, html_dir, port);
+  int result = quickie_serve(address, md_dir, html_dir, port);
+  free(quickie_entries);
+  return result;
 }
