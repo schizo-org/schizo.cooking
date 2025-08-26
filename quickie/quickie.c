@@ -2,6 +2,7 @@
 #include "../marker/src/marker.h"
 
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,33 @@
 #define QUICKIE_DEFAULT_MD_DIR "."
 #define QUICKIE_DEFAULT_HTML_DIR "."
 
+// Recursively create directories
+static int quickie_mkdir_recursive(const char *path, mode_t mode) {
+  char tmp[QUICKIE_MAX_PATH];
+  size_t len = strlen(path);
+  if (len == 0 || len >= QUICKIE_MAX_PATH)
+    return -1;
+  strncpy(tmp, path, QUICKIE_MAX_PATH);
+  tmp[QUICKIE_MAX_PATH - 1] = '\0';
+
+  if (tmp[len - 1] == '/')
+    tmp[len - 1] = '\0';
+
+  for (char *p = tmp + 1; *p; p++) {
+    if (*p == '/') {
+      *p = '\0';
+      if (mkdir(tmp, mode) != 0 && errno != EEXIST) {
+        return -1;
+      }
+      *p = '/';
+    }
+  }
+  if (mkdir(tmp, mode) != 0 && errno != EEXIST) {
+    return -1;
+  }
+  return 0;
+}
+
 typedef struct {
   char md_path[QUICKIE_MAX_PATH];
   char html_path[QUICKIE_MAX_PATH];
@@ -25,7 +53,7 @@ static quickie_md_html_entry quickie_entries[QUICKIE_MAX_MD_FILES];
 static int quickie_entry_count = 0;
 
 // Recursively scan for .md files in the given directory and fill
-// quickie_entries
+// `quickie_entries`
 void quickie_scan_markdown(const char *md_base_dir, const char *rel_dir) {
   char dir_path[QUICKIE_MAX_PATH];
   snprintf(dir_path, sizeof(dir_path), "%s/%s", md_base_dir,
@@ -90,9 +118,12 @@ void quickie_convert_all(const char *md_base_dir, const char *html_base_dir,
     char *slash = strrchr(html_full, '/');
     if (slash) {
       *slash = '\0';
-      char mkdir_cmd[QUICKIE_MAX_PATH + 32];
-      snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p \"%s\"", html_full);
-      system(mkdir_cmd);
+      if (quickie_mkdir_recursive(html_full, 0755) != 0) {
+        fprintf(stderr, "Failed to create directory: %s (%s)\n", html_full,
+                strerror(errno));
+        *slash = '/';
+        continue;
+      }
       *slash = '/';
     }
 
@@ -108,6 +139,23 @@ void quickie_convert_all(const char *md_base_dir, const char *html_base_dir,
 // HTML
 int quickie_serve(const char *address, const char *md_base_dir,
                   const char *html_base_dir, int port) {
+  // Check if HTML output directory is writable
+  struct stat st;
+  if (stat(html_base_dir, &st) != 0) {
+    fprintf(stderr, "HTML output directory does not exist: %s\n",
+            html_base_dir);
+    return 1;
+  }
+  if (!S_ISDIR(st.st_mode)) {
+    fprintf(stderr, "HTML output path is not a directory: %s\n", html_base_dir);
+    return 1;
+  }
+  if (access(html_base_dir, W_OK) != 0) {
+    fprintf(stderr, "HTML output directory is not writable: %s\n",
+            html_base_dir);
+    return 1;
+  }
+
   // Pre-convert all markdown files to HTML
   quickie_scan_markdown(md_base_dir, NULL);
   quickie_convert_all(md_base_dir, html_base_dir, NULL);
