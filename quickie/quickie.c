@@ -138,7 +138,7 @@ void quickie_scan_markdown(const char* md_base_dir, const char* rel_dir)
       rel_path_len = snprintf(rel_path, sizeof(rel_path), "%s/%s", rel_dir, entry->d_name);
       if (rel_path_len < 0 || rel_path_len >= (int) sizeof(rel_path))
       {
-        fprintf(stderr, "Relative path too long: %s/%s\n", rel_dir, entry->d_name);
+        log_error("Relative path too long: %s/%s", rel_dir, entry->d_name);
         continue;
       }
     }
@@ -147,7 +147,7 @@ void quickie_scan_markdown(const char* md_base_dir, const char* rel_dir)
       rel_path_len = snprintf(rel_path, sizeof(rel_path), "%s", entry->d_name);
       if (rel_path_len < 0 || rel_path_len >= (int) sizeof(rel_path))
       {
-        fprintf(stderr, "Relative path too long: %s\n", entry->d_name);
+        log_error("Relative path too long: %s", entry->d_name);
         continue;
       }
     }
@@ -156,7 +156,7 @@ void quickie_scan_markdown(const char* md_base_dir, const char* rel_dir)
     int  full_path_len = snprintf(full_path, sizeof(full_path), "%s/%s", md_base_dir, rel_path);
     if (full_path_len < 0 || full_path_len >= (int) sizeof(full_path))
     {
-      fprintf(stderr, "Full path too long: %s/%s\n", md_base_dir, rel_path);
+      log_error("Full path too long: %s/%s", md_base_dir, rel_path);
       continue;
     }
 
@@ -216,16 +216,14 @@ void quickie_convert_all(const char* md_base_dir, const char* html_base_dir, con
         snprintf(md_full, sizeof(md_full), "%s/%s", md_base_dir, quickie_entries[i].md_path);
     if (md_full_len < 0 || md_full_len >= (int) sizeof(md_full))
     {
-      fprintf(stderr, "Markdown file path too long: %s/%s\n", md_base_dir,
-              quickie_entries[i].md_path);
+      log_error("Markdown file path too long: %s/%s", md_base_dir, quickie_entries[i].md_path);
       continue;
     }
     int html_full_len = snprintf(html_full, sizeof(html_full), "%s/%s", html_base_dir,
                                  quickie_entries[i].html_path);
     if (html_full_len < 0 || html_full_len >= (int) sizeof(html_full))
     {
-      fprintf(stderr, "HTML file path too long: %s/%s\n", html_base_dir,
-              quickie_entries[i].html_path);
+      log_error("HTML file path too long: %s/%s", html_base_dir, quickie_entries[i].html_path);
       continue;
     }
 
@@ -276,29 +274,30 @@ void quickie_convert_all(const char* md_base_dir, const char* html_base_dir, con
 
 // Serve HTML files using iris, but intercept requests for .md and serve the
 // HTML
-int quickie_serve(const char* address, const char* md_base_dir, const char* html_base_dir, int port)
+int quickie_serve(const char* address, const char* md_base_dir, const char* html_base_dir,
+                  const char* css_file, int port)
 {
   // Check if HTML output directory is writable
   struct stat st;
   if (stat(html_base_dir, &st) != 0)
   {
-    fprintf(stderr, "HTML output directory does not exist: %s\n", html_base_dir);
+    log_error("HTML output directory does not exist: %s", html_base_dir);
     return 1;
   }
   if (!S_ISDIR(st.st_mode))
   {
-    fprintf(stderr, "HTML output path is not a directory: %s\n", html_base_dir);
+    log_error("HTML output path is not a directory: %s", html_base_dir);
     return 1;
   }
   if (access(html_base_dir, W_OK) != 0)
   {
-    fprintf(stderr, "HTML output directory is not writable: %s\n", html_base_dir);
+    log_error("HTML output directory is not writable: %s", html_base_dir);
     return 1;
   }
 
   // Pre-convert all markdown files to HTML
   quickie_scan_markdown(md_base_dir, NULL);
-  quickie_convert_all(md_base_dir, html_base_dir, NULL);
+  quickie_convert_all(md_base_dir, html_base_dir, css_file);
 
   return iris_start(address, html_base_dir, port);
 }
@@ -306,10 +305,12 @@ int quickie_serve(const char* address, const char* md_base_dir, const char* html
 // Clap solves this
 void quickie_usage(const char* prog)
 {
-  fprintf(stderr, "Usage: %s [-b ADDRESS] [-m MD_DIR] [-o HTML_DIR] [-p PORT]\n", prog);
+  fprintf(stderr, "Usage: %s [-b ADDRESS] [-m MD_DIR] [-o HTML_DIR] [-c CSS_FILE] [-p PORT]\n",
+          prog);
   fprintf(stderr, "  -b ADDRESS   Bind address (default: 0.0.0.0)\n");
   fprintf(stderr, "  -m MD_DIR    Directory to scan for markdown files (default: .)\n");
   fprintf(stderr, "  -o HTML_DIR  Directory to output and serve HTML files (default: .)\n");
+  fprintf(stderr, "  -c CSS_FILE  CSS file to include in HTML output (optional)\n");
   fprintf(stderr, "  -p PORT      Port to listen on (default: %d)\n", QUICKIE_DEFAULT_PORT);
 }
 
@@ -318,6 +319,7 @@ int main(int argc, char* argv[])
   char address[64]                = "0.0.0.0";
   char md_dir[QUICKIE_MAX_PATH]   = QUICKIE_DEFAULT_MD_DIR;
   char html_dir[QUICKIE_MAX_PATH] = QUICKIE_DEFAULT_HTML_DIR;
+  char css_file[QUICKIE_MAX_PATH] = "";
   int  port                       = QUICKIE_DEFAULT_PORT;
 
   for (int i = 1; i < argc; ++i)
@@ -329,38 +331,57 @@ int main(int argc, char* argv[])
     }
     else if (strcmp(argv[i], "-b") == 0 && i + 1 < argc)
     {
-      if (strlen(argv[i]) >= sizeof(address))
+      if (strlen(argv[i + 1]) >= sizeof(address))
       {
         log_error("Address argument too long");
         return 1;
       }
       strncpy(address, argv[++i], sizeof(address) - 1);
+      address[sizeof(address) - 1] = '\0';
     }
     else if (strcmp(argv[i], "-m") == 0 && i + 1 < argc)
     {
-      if (strlen(argv[i]) >= sizeof(md_dir))
+      if (strlen(argv[i + 1]) >= sizeof(md_dir))
       {
         log_error("Markdown directory argument too long");
         return 1;
       }
       strncpy(md_dir, argv[++i], sizeof(md_dir) - 1);
+      md_dir[sizeof(md_dir) - 1] = '\0';
     }
     else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc)
     {
-      if (strlen(argv[i]) >= sizeof(html_dir))
+      if (strlen(argv[i + 1]) >= sizeof(html_dir))
       {
         log_error("HTML directory argument too long");
         return 1;
       }
       strncpy(html_dir, argv[++i], sizeof(html_dir) - 1);
+      html_dir[sizeof(html_dir) - 1] = '\0';
+    }
+    else if (strcmp(argv[i], "-c") == 0 && i + 1 < argc)
+    {
+      if (strlen(argv[i + 1]) >= sizeof(css_file))
+      {
+        log_error("CSS file argument too long");
+        return 1;
+      }
+      strncpy(css_file, argv[++i], sizeof(css_file) - 1);
+      css_file[sizeof(css_file) - 1] = '\0';
     }
     else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc)
     {
       port = atoi(argv[++i]);
+      if (port <= 0 || port > 65535)
+      {
+        log_error("Invalid port number: %d (must be 1-65535)", port);
+        return 1;
+      }
     }
   }
 
-  int result = quickie_serve(address, md_dir, html_dir, port);
+  int result =
+      quickie_serve(address, md_dir, html_dir, strlen(css_file) > 0 ? css_file : NULL, port);
   free(quickie_entries);
   return result;
 }
