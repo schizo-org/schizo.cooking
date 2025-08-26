@@ -17,8 +17,7 @@
  *        accommodate the generated HTML or suffer the consequences of your own
  *        actions.
  */
-void md_to_html(const char *markdown, char *html, size_t html_size,
-                const char *css_file);
+void md_to_html(const char* markdown, char* html, size_t html_size, const char* css_file);
 
 /**
  * Converts a Markdown file to an HTML file
@@ -33,9 +32,8 @@ void md_to_html(const char *markdown, char *html, size_t html_size,
  *         - -3: Failed to allocate memory for HTML output
  *         - -4: Failed to open output file
  */
-int md_file_to_html_file(const char *input_filename,
-                         const char *output_filename,
-                         const char *css_file);
+int md_file_to_html_file(const char* input_filename, const char* output_filename,
+                         const char* css_file);
 
 /**
  * Converts multiple Markdown files to HTML files.
@@ -48,7 +46,7 @@ int md_file_to_html_file(const char *input_filename,
  * @return 0 on success, a negative value on failure:
  *         - -1: Failure in converting one or more files
  */
-int md_files_to_html_files(const char **input_files, const char **output_files,
-                           int count, const char *css_file);
+int md_files_to_html_files(const char** input_files, const char** output_files, int count,
+                           const char* css_file);
 
-#endif // MARKER_H
+#endif  // MARKER_H
