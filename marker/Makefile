@@ -1,27 +1,35 @@
-CC = gcc
-CFLAGS = -Wall -Wextra -std=c99
-LDFLAGS =
-OUTPUT_LIBRARY = libmarker.a
-OBJECTS = src/marker.o
-SRC = src/marker.c
-HEADERS = src/marker.h
+include ../common.mk
 
-BUILD_DIR = build
-TEST_DIR = tests
-TEST_OBJECTS = $(TEST_DIR)/test_marker.o
-TEST_EXEC = $(TEST_DIR)/marker_test
+TARGET := libmarker.a
+SRC_DIR := src
+TEST_DIR := tests
 
-$(OUTPUT_LIBRARY): $(OBJECTS)
-	ar rcs $(OUTPUT_LIBRARY) $(OBJECTS)
+MARKER_SRC := $(SRC_DIR)/marker.c
+MARKER_HDR := $(SRC_DIR)/marker.h
+MARKER_OBJ := $(SRC_DIR)/marker.o
 
-$(TEST_DIR)/test_marker.o: $(TEST_DIR)/test_marker.c $(HEADERS) $(OBJECTS)
-	$(CC) $(CFLAGS) -c $(TEST_DIR)/test_marker.c -o $(TEST_DIR)/test_marker.o
+TEST_SRC := $(TEST_DIR)/test_marker.c
+TEST_OBJ := $(TEST_DIR)/test_marker.o
+TEST_TARGET := $(TEST_DIR)/test_marker
 
-test: $(OUTPUT_LIBRARY) $(TEST_OBJECTS)
-	$(CC) $(CFLAGS) $(TEST_OBJECTS) $(OUTPUT_LIBRARY) -o $(TEST_EXEC)
-	./$(TEST_EXEC)
+all: $(TARGET)
+
+$(TARGET): $(MARKER_OBJ)
+	$(AR) $(ARFLAGS) $@ $^
+
+$(MARKER_OBJ): $(MARKER_SRC) $(MARKER_HDR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(TEST_OBJ): $(TEST_SRC) $(MARKER_HDR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(TEST_TARGET): $(TEST_OBJ) $(TARGET)
+	$(CC) $(CFLAGS) $< $(TARGET) -o $@
+
+test: $(TEST_TARGET)
+	./$(TEST_TARGET)
 
 clean:
-	rm -rf $(BUILD_DIR) $(OUTPUT_LIBRARY) $(TEST_EXEC)
+	rm -f $(MARKER_OBJ) $(TARGET) $(TEST_OBJ) $(TEST_TARGET)
 
-.PHONY: clean test
+.PHONY: all clean test

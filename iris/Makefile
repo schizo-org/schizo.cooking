@@ -1,30 +1,28 @@
-CC := gcc
-CFLAGS := -Wall -Wextra -pedantic -O3
+include ../common.mk
 
 TARGET := iris
+LIB_TARGET := libiris.a
 SRC_DIR := src
+
 MAIN_SRC := $(SRC_DIR)/main.c
 IRIS_SRC := $(SRC_DIR)/iris.c
 IRIS_HDR := $(SRC_DIR)/iris.h
 
-OBJS := $(IRIS_SRC:.c=.o) $(MAIN_SRC:.c=.o)
+MAIN_OBJ := $(SRC_DIR)/main.o
+IRIS_OBJ := $(SRC_DIR)/iris.o
 
-TEST_SRCS := $(wildcard tests/*.c)
-TEST_OBJS := $(TEST_SRCS:.c=.o)
-TEST_TARGET := test_iris
+all: $(TARGET) $(LIB_TARGET)
 
-PREFIX ?= /usr/local
-BINDIR := $(PREFIX)/bin
-
-all: $(TARGET) $(TEST_TARGET)
-
-$(TARGET): $(OBJS)
+$(TARGET): $(MAIN_OBJ) $(IRIS_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
-$(TEST_TARGET): $(OBJS) $(TEST_OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+$(LIB_TARGET): $(IRIS_OBJ)
+	$(AR) $(ARFLAGS) $@ $^
 
-%.o: $(SRC_DIR)/%.c
+$(MAIN_OBJ): $(MAIN_SRC) $(IRIS_HDR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(IRIS_OBJ): $(IRIS_SRC) $(IRIS_HDR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 install: $(TARGET)
@@ -34,9 +32,6 @@ uninstall:
 	rm -f $(BINDIR)/$(TARGET)
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(TEST_OBJS) $(TEST_TARGET)
+	rm -f $(MAIN_OBJ) $(IRIS_OBJ) $(TARGET) $(LIB_TARGET)
 
-test: $(TEST_TARGET)
-	./$(TEST_TARGET)
-
-.PHONY: all clean install uninstall test
+.PHONY: all clean install uninstall
