@@ -26,15 +26,11 @@ static iris_mime_entry mime_types[] = {{".html", "text/html"},
                                        {".txt", "text/plain"},
                                        {NULL, "application/octet-stream"}};
 
-const char* iris_get_mime_type(const char* path)
-{
+const char* iris_get_mime_type(const char* path) {
   const char* ext = strrchr(path, '.');
-  if (ext)
-  {
-    for (iris_mime_entry* entry = mime_types; entry->extension; ++entry)
-    {
-      if (strcasecmp(ext, entry->extension) == 0)
-      {
+  if (ext) {
+    for (iris_mime_entry* entry = mime_types; entry->extension; ++entry) {
+      if (strcasecmp(ext, entry->extension) == 0) {
         return entry->mime_type;
       }
     }
@@ -43,8 +39,7 @@ const char* iris_get_mime_type(const char* path)
   return "application/octet-stream";
 }
 
-void iris_get_http_date(char* buffer, size_t buffer_size)
-{
+void iris_get_http_date(char* buffer, size_t buffer_size) {
   time_t    now = time(NULL);
   struct tm tm_now;
 #if defined(_POSIX_VERSION)
@@ -59,8 +54,7 @@ void iris_get_http_date(char* buffer, size_t buffer_size)
   strftime(buffer, buffer_size, "%a, %d %b %Y %H:%M:%S GMT", &tm_now);
 }
 
-void iris_send_error_response(int client_fd, int status_code, const char* message)
-{
+void iris_send_error_response(int client_fd, int status_code, const char* message) {
   char date[128];
   iris_get_http_date(date, sizeof(date));
   char body[256];
@@ -82,21 +76,18 @@ void iris_send_error_response(int client_fd, int status_code, const char* messag
   send(client_fd, body, body_length, 0);
 }
 
-void iris_send_file(const char* path, int client_fd)
-{
+void iris_send_file(const char* path, int client_fd) {
   char date[128];
   iris_get_http_date(date, sizeof(date));
 
   FILE* file = fopen(path, "rb");
-  if (!file)
-  {
+  if (!file) {
     iris_send_error_response(client_fd, 404, "Not Found");
     return;
   }
 
   struct stat st;
-  if (stat(path, &st) != 0)
-  {
+  if (stat(path, &st) != 0) {
     fclose(file);
     iris_send_error_response(client_fd, 404, "Not Found");
     return;
@@ -115,15 +106,13 @@ void iris_send_file(const char* path, int client_fd)
 
   char   buffer[IRIS_BUFFER_SIZE];
   size_t bytes_read;
-  while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0)
-  {
+  while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
     send(client_fd, buffer, bytes_read, 0);
   }
   fclose(file);
 }
 
-void iris_send_directory_listing(const char* fs_path, const char* url_path, int client_fd)
-{
+void iris_send_directory_listing(const char* fs_path, const char* url_path, int client_fd) {
   char date[128];
   iris_get_http_date(date, sizeof(date));
   char header[IRIS_MAX_HEADER_SIZE];
@@ -143,26 +132,21 @@ void iris_send_directory_listing(const char* fs_path, const char* url_path, int 
   send(client_fd, buffer, strlen(buffer), 0);
 
   DIR* dir = opendir(fs_path);
-  if (!dir)
-  {
+  if (!dir) {
     iris_send_error_response(client_fd, 500, "Internal Server Error");
     return;
   }
 
   struct dirent* entry;
-  while ((entry = readdir(dir)))
-  {
+  while ((entry = readdir(dir))) {
     // Skip . and ..
     if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
       continue;
     // Avoid double slashes for root
-    if (strcmp(url_path, "/") == 0)
-    {
+    if (strcmp(url_path, "/") == 0) {
       snprintf(buffer, sizeof(buffer), "<li><a href=\"/%s\">%s</a></li>", entry->d_name,
                entry->d_name);
-    }
-    else
-    {
+    } else {
       snprintf(buffer, sizeof(buffer), "<li><a href=\"%s/%s\">%s</a></li>", url_path, entry->d_name,
                entry->d_name);
     }
@@ -174,65 +158,52 @@ void iris_send_directory_listing(const char* fs_path, const char* url_path, int 
   send(client_fd, buffer, strlen(buffer), 0);
 }
 
-int iris_sanitize_path(const char* base_dir, const char* requested_path, char* full_path)
-{
-  if (strcmp(requested_path, "/") == 0)
-  {
+int iris_sanitize_path(const char* base_dir, const char* requested_path, char* full_path) {
+  if (strcmp(requested_path, "/") == 0) {
     snprintf(full_path, IRIS_MAX_PATH_SIZE, "%s", base_dir);
     return 1;
   }
 
   // Reject if the requested path is not rooted
-  if (requested_path[0] != '/')
-  {
+  if (requested_path[0] != '/') {
     return 0;
   }
 
   char resolved_path[IRIS_MAX_PATH_SIZE];
   snprintf(resolved_path, sizeof(resolved_path), "%s%s", base_dir, requested_path);
-  if (!realpath(resolved_path, full_path))
-  {
+  if (!realpath(resolved_path, full_path)) {
     return 0;
   }
 
   size_t base_len = strlen(base_dir);
-  if (base_len > 1 && base_dir[base_len - 1] == '/')
-  {
+  if (base_len > 1 && base_dir[base_len - 1] == '/') {
     base_len--;
   }
-  if (strncmp(full_path, base_dir, base_len) != 0)
-  {
+  if (strncmp(full_path, base_dir, base_len) != 0) {
     return 0;
   }
 
   return 1;
 }
 
-int iris_start(const char* address, const char* directory, int port)
-{
+int iris_start(const char* address, const char* directory, int port) {
   // Resolve base directory to absolute path once
   char resolved_base_dir[IRIS_MAX_PATH_SIZE];
 
-  if (strcmp(directory, ".") == 0)
-  {
-    if (!getcwd(resolved_base_dir, sizeof(resolved_base_dir)))
-    {
+  if (strcmp(directory, ".") == 0) {
+    if (!getcwd(resolved_base_dir, sizeof(resolved_base_dir))) {
       perror("Failed to get current directory");
       return 1;
     }
-  }
-  else
-  {
-    if (!realpath(directory, resolved_base_dir))
-    {
+  } else {
+    if (!realpath(directory, resolved_base_dir)) {
       perror("Failed to resolve base directory");
       return 1;
     }
   }
 
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (server_fd == -1)
-  {
+  if (server_fd == -1) {
     perror("socket");
     return 1;
   }
@@ -243,22 +214,19 @@ int iris_start(const char* address, const char* directory, int port)
   struct sockaddr_in server_addr = {0};
   server_addr.sin_family         = AF_INET;
   server_addr.sin_port           = htons(port);
-  if (inet_pton(AF_INET, address, &server_addr.sin_addr) <= 0)
-  {
+  if (inet_pton(AF_INET, address, &server_addr.sin_addr) <= 0) {
     perror("inet_pton");
     close(server_fd);
     return 1;
   }
 
-  if (bind(server_fd, (struct sockaddr*) &server_addr, sizeof(server_addr)) == -1)
-  {
+  if (bind(server_fd, (struct sockaddr*) &server_addr, sizeof(server_addr)) == -1) {
     perror("bind");
     close(server_fd);
     return 1;
   }
 
-  if (listen(server_fd, 10) == -1)
-  {
+  if (listen(server_fd, 10) == -1) {
     perror("listen");
     close(server_fd);
     return 1;
@@ -266,19 +234,16 @@ int iris_start(const char* address, const char* directory, int port)
 
   printf("Serving HTTP on %s port %d (http://%s:%d/) ...\n", address, port, address, port);
 
-  while (1)
-  {
+  while (1) {
     int client_fd = accept(server_fd, NULL, NULL);
-    if (client_fd == -1)
-    {
+    if (client_fd == -1) {
       perror("accept");
       continue;
     }
 
     char buffer[IRIS_BUFFER_SIZE];
     int  bytes_read = read(client_fd, buffer, sizeof(buffer) - 1);
-    if (bytes_read <= 0)
-    {
+    if (bytes_read <= 0) {
       close(client_fd);
       continue;
     }
@@ -290,58 +255,44 @@ int iris_start(const char* address, const char* directory, int port)
     char version[IRIS_MAX_VERSION_SIZE] = {0};
 
     int tokens = sscanf(buffer, "%15s %511s %15s", method, path, version);
-    if (tokens != 3)
-    {
+    if (tokens != 3) {
       iris_send_error_response(client_fd, 400, "Bad Request");
       close(client_fd);
       continue;
     }
 
     // Only allow GET method and require the path to start with '/'
-    if (strcasecmp(method, "GET") != 0 || path[0] != '/')
-    {
+    if (strcasecmp(method, "GET") != 0 || path[0] != '/') {
       iris_send_error_response(client_fd, 405, "Method Not Allowed");
       close(client_fd);
       continue;
     }
 
     char full_path[IRIS_MAX_PATH_SIZE];
-    if (!iris_sanitize_path(resolved_base_dir, path, full_path))
-    {
+    if (!iris_sanitize_path(resolved_base_dir, path, full_path)) {
       iris_send_error_response(client_fd, 403, "Forbidden");
       close(client_fd);
       continue;
     }
 
     struct stat st;
-    if (stat(full_path, &st) == 0)
-    {
-      if (S_ISDIR(st.st_mode))
-      {
+    if (stat(full_path, &st) == 0) {
+      if (S_ISDIR(st.st_mode)) {
         char index_path[IRIS_MAX_PATH_SIZE + 12];  // 12 for "/index.html"
         snprintf(index_path, sizeof(index_path), "%s/index.html", full_path);
         char url_index_path[IRIS_MAX_PATH_SIZE + 12];
         snprintf(url_index_path, sizeof(url_index_path), "%s/index.html", path);
-        if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode))
-        {
+        if (stat(index_path, &st) == 0 && S_ISREG(st.st_mode)) {
           iris_send_file(index_path, client_fd);
-        }
-        else
-        {
+        } else {
           iris_send_directory_listing(full_path, path, client_fd);
         }
-      }
-      else if (S_ISREG(st.st_mode))
-      {
+      } else if (S_ISREG(st.st_mode)) {
         iris_send_file(full_path, client_fd);
-      }
-      else
-      {
+      } else {
         iris_send_error_response(client_fd, 403, "Forbidden");
       }
-    }
-    else
-    {
+    } else {
       iris_send_error_response(client_fd, 404, "Not Found");
     }
 
