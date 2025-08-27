@@ -6,7 +6,7 @@ TabWidth:        2
 UseTab:          Never
 ColumnLimit:     100
 AllowShortIfStatementsOnASingleLine: false
-BreakBeforeBraces: Allman
+BreakBeforeBraces: Attach
 IndentCaseLabels: true
 IndentGotoLabels: true
 IndentPPDirectives: AfterHash
@@ -19,6 +19,7 @@ SpaceBeforeParens: ControlStatements
 PointerAlignment: Left
 AlignConsecutiveAssignments: true
 AlignConsecutiveDeclarations: true
+AlignArrayOfStructures: Left
 AlignTrailingComments: true
 AllowShortBlocksOnASingleLine: false
 AlwaysBreakAfterReturnType: None
