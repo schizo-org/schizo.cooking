@@ -99,7 +99,7 @@ static int quickie_fix_capacity(void) {
     int new_capacity =
         quickie_entry_capacity > 0 ? quickie_entry_capacity * 2 : QUICKIE_INIT_ENTRY_CAPACITY;
 
-    if (new_capacity > INT_MAX / sizeof(quickie_md_html_entry)) {
+    if (new_capacity > INT_MAX / (int)sizeof(quickie_md_html_entry)) {
       log_error("Allocation would overflow");
       return 0;
     }

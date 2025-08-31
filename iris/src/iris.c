@@ -1,7 +1,9 @@
 #define _POSIX_C_SOURCE 200112L
+#define _DEFAULT_SOURCE
 #include "iris.h"
 #include <arpa/inet.h>
 #include <dirent.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -171,9 +173,21 @@ int iris_sanitize_path(const char* base_dir, const char* requested_path, char* f
 
   char resolved_path[IRIS_MAX_PATH_SIZE];
   snprintf(resolved_path, sizeof(resolved_path), "%s%s", base_dir, requested_path);
-  if (!realpath(resolved_path, full_path)) {
+
+  // Use a larger buffer for realpath since it can write up to PATH_MAX bytes
+  char realpath_buffer[PATH_MAX];
+  if (!realpath(resolved_path, realpath_buffer)) {
     return 0;
   }
+
+  // Check if the resolved path fits in our output buffer
+  if (strlen(realpath_buffer) >= IRIS_MAX_PATH_SIZE) {
+    return 0;  // path is too long for our buffer
+  }
+
+  // Copy the resolved path to the output buffer
+  strncpy(full_path, realpath_buffer, IRIS_MAX_PATH_SIZE - 1);
+  full_path[IRIS_MAX_PATH_SIZE - 1] = '\0';
 
   size_t base_len = strlen(base_dir);
   if (base_len > 1 && base_dir[base_len - 1] == '/') {
@@ -196,10 +210,22 @@ int iris_start(const char* address, const char* directory, int port) {
       return 1;
     }
   } else {
-    if (!realpath(directory, resolved_base_dir)) {
+    // Use a larger buffer for realpath since it can write up to PATH_MAX bytes
+    char realpath_buffer[PATH_MAX];
+    if (!realpath(directory, realpath_buffer)) {
       perror("Failed to resolve base directory");
       return 1;
     }
+
+    // Check if the resolved path fits in our buffer
+    if (strlen(realpath_buffer) >= IRIS_MAX_PATH_SIZE) {
+      fprintf(stderr, "Base directory path too long\n");
+      return 1;
+    }
+
+    // Copy the resolved path to our buffer
+    strncpy(resolved_base_dir, realpath_buffer, IRIS_MAX_PATH_SIZE - 1);
+    resolved_base_dir[IRIS_MAX_PATH_SIZE - 1] = '\0';
   }
 
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
