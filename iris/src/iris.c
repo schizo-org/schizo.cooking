@@ -72,7 +72,7 @@ void iris_send_error_response(int client_fd, int status_code, const char* messag
            "Content-Type: text/html\r\n"
            "Content-Length: %lu\r\n"
            "Date: %s\r\n"
-           "Server: SimpleHTTP/1.0\r\n\r\n",
+           "Server: Iris/1.0\r\n\r\n",
            status_code, message, body_length, date);
   send(client_fd, header, strlen(header), 0);
   send(client_fd, body, body_length, 0);
@@ -102,7 +102,7 @@ void iris_send_file(const char* path, int client_fd) {
            "Content-Type: %s\r\n"
            "Content-Length: %ld\r\n"
            "Date: %s\r\n"
-           "Server: SimpleHTTP/1.0\r\n\r\n",
+           "Server: Iris/1.0\r\n\r\n",
            mime_type, st.st_size, date);
   send(client_fd, header, strlen(header), 0);
 
@@ -122,7 +122,7 @@ void iris_send_directory_listing(const char* fs_path, const char* url_path, int 
            "HTTP/1.0 200 OK\r\n"
            "Content-Type: text/html\r\n"
            "Date: %s\r\n"
-           "Server: SimpleHTTP/1.0\r\n\r\n",
+           "Server: Iris/1.0\r\n\r\n",
            date);
   send(client_fd, header, strlen(header), 0);
 
