@@ -200,7 +200,11 @@ int iris_sanitize_path(const char* base_dir, const char* requested_path, char* f
   return 1;
 }
 
-int iris_start(const char* address, const char* directory, int port) {
+int iris_default_intercept(char* path) {
+
+};
+
+int iris_start_with_intercept(const char* address, const char* directory, int port, int (*intercept)(char*)) {
   // Resolve base directory to absolute path once
   char resolved_base_dir[IRIS_MAX_PATH_SIZE];
 
@@ -301,6 +305,7 @@ int iris_start(const char* address, const char* directory, int port) {
       continue;
     }
 
+    intercept(full_path);
     struct stat st;
     if (stat(full_path, &st) == 0) {
       if (S_ISDIR(st.st_mode)) {
@@ -327,4 +332,8 @@ int iris_start(const char* address, const char* directory, int port) {
 
   close(server_fd);
   return 0;
+}
+
+int iris_start(const char* address, const char* directory, int port) {
+  return iris_start_with_intercept(address, directory, port, iris_default_intercept);
 }
