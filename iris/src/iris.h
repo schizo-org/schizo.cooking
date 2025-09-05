@@ -80,6 +80,18 @@ int iris_sanitize_path(const char* base_dir, const char* requested_path, char* f
  */
 int iris_start(const char* address, const char* directory, int port);
 
+/*
+ * Start the Iris HTTP server with an interceptor function.
+ *
+ *
+ * @param address The address to bind to (e.g., "0.0.0.0").
+ * @param directory The directory from which to serve files.
+ * @param port The port number to listen on.
+ * @param intercept The function to intercept requests with.
+ * @return 0 on success, non-zero on error.
+ */
+int iris_start_with_intercept(const char* address, const char* directory, int port, int (*intercept)(char*));
+
 #ifdef __cplusplus
 }
 #endif

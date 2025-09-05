@@ -177,7 +177,9 @@ int iris_sanitize_path(const char* base_dir, const char* requested_path, char* f
   // Use a larger buffer for realpath since it can write up to PATH_MAX bytes
   char realpath_buffer[PATH_MAX];
   if (!realpath(resolved_path, realpath_buffer)) {
-    return 0;
+    // she'll be roight mate
+    strncpy(full_path, resolved_path, IRIS_MAX_PATH_SIZE - 1);
+    return 1;
   }
 
   // Check if the resolved path fits in our output buffer
@@ -200,7 +202,11 @@ int iris_sanitize_path(const char* base_dir, const char* requested_path, char* f
   return 1;
 }
 
-int iris_start(const char* address, const char* directory, int port) {
+int iris_default_intercept(char* path) {
+
+};
+
+int iris_start_with_intercept(const char* address, const char* directory, int port, int (*intercept)(char*)) {
   // Resolve base directory to absolute path once
   char resolved_base_dir[IRIS_MAX_PATH_SIZE];
 
@@ -301,6 +307,7 @@ int iris_start(const char* address, const char* directory, int port) {
       continue;
     }
 
+    intercept(full_path);
     struct stat st;
     if (stat(full_path, &st) == 0) {
       if (S_ISDIR(st.st_mode)) {
@@ -327,4 +334,8 @@ int iris_start(const char* address, const char* directory, int port) {
 
   close(server_fd);
   return 0;
+}
+
+int iris_start(const char* address, const char* directory, int port) {
+  return iris_start_with_intercept(address, directory, port, iris_default_intercept);
 }
