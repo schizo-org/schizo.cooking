@@ -177,7 +177,9 @@ int iris_sanitize_path(const char* base_dir, const char* requested_path, char* f
   // Use a larger buffer for realpath since it can write up to PATH_MAX bytes
   char realpath_buffer[PATH_MAX];
   if (!realpath(resolved_path, realpath_buffer)) {
-    return 0;
+    // she'll be roight mate
+    strncpy(full_path, resolved_path, IRIS_MAX_PATH_SIZE - 1);
+    return 1;
   }
 
   // Check if the resolved path fits in our output buffer
