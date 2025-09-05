@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <libgen.h>
 
 #define QUICKIE_MAX_MD_FILES 1024
 #define QUICKIE_MAX_PATH 512
@@ -84,6 +85,7 @@ typedef struct {
 static quickie_md_html_entry* quickie_entries        = NULL;
 static int                    quickie_entry_count    = 0;
 static int                    quickie_entry_capacity = 0;
+static char                   quickie_css_file[QUICKIE_MAX_PATH] = "";
 
 #define QUICKIE_INIT_ENTRY_CAPACITY 128
 
@@ -270,6 +272,46 @@ void quickie_convert_all(const char* md_base_dir, const char* html_base_dir, con
   }
 }
 
+int quickie_intercept_markdown(char* path) {
+  char* bname = basename(path);
+  if (bname) {
+    printf("quickie: checking path %s, %s\n", path, bname);
+    const char* dot = strrchr(bname, '.');
+    if (dot && strcmp(dot, ".html") == 0) {
+      char md_full[QUICKIE_MAX_PATH];
+      strcpy(md_full, path);
+      int len = strlen(path);
+      md_full[len-4] = 'm';
+      md_full[len-3] = 'd';
+      md_full[len-2] = '\0';
+      
+      // Write to temp file first, then (atomically) rename
+      // XXX: Or is it atomicly? I don't really know.
+      char html_tmp[QUICKIE_MAX_PATH];
+      int  html_tmp_len = snprintf(html_tmp, sizeof(html_tmp), "%s.tmp", path);
+      if (html_tmp_len < 0 || html_tmp_len >= (int) sizeof(html_tmp)) {
+        log_error("Temp HTML file path too long: %s.tmp", path);
+        return 0;
+      }
+  
+      int res = md_file_to_html_file(md_full, html_tmp, quickie_css_file);
+      if (res == 0) {
+        // Atomic rename to final destination
+        if (rename(html_tmp, path) != 0) {
+          log_error("Failed to rename temp file %s to %s: %s", html_tmp, path, strerror(errno));
+          // Remove temp file if rename fails
+          unlink(html_tmp);
+          return 0;
+        }
+      } else {
+        log_error("Failed to convert %s to HTML (error %d)", md_full, res);
+        // Remove temp file if conversion failed
+        unlink(html_tmp);
+      }
+    }
+  }
+}
+
 // Serve HTML files using iris, but intercept requests for .md and serve the
 // HTML
 int quickie_serve(const char* address, const char* md_base_dir, const char* html_base_dir,
@@ -298,11 +340,7 @@ int quickie_serve(const char* address, const char* md_base_dir, const char* html
     return 1;
   }
 
-  // Pre-convert all markdown files to HTML
-  quickie_scan_markdown(md_base_dir, NULL);
-  quickie_convert_all(md_base_dir, html_base_dir, css_file);
-
-  return iris_start(address, html_base_dir, port);
+  return iris_start_with_intercept(address, html_base_dir, port, quickie_intercept_markdown);
 }
 
 // Clap solves this
