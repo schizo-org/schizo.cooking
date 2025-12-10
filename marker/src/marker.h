@@ -10,8 +10,8 @@ extern "C" {
 
 #define MARKER_VERSION_MAJOR 1
 #define MARKER_VERSION_MINOR 0
-#define MARKER_VERSION_PATCH 0
-#define MARKER_VERSION_STRING "1.0.0"
+#define MARKER_VERSION_PATCH 1
+#define MARKER_VERSION_STRING "1.0.1"
 
 // Error codes.
 // Previously I had elected to omit explicit error handling because Marker

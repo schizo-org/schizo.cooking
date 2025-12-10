@@ -6,13 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Internal constants */
+// Internal constants
 #define DEFAULT_BUFFER_SIZE 4096
 #define MAX_NESTING_DEPTH 32
 #define MAX_LINE_LENGTH 4096
 #define MAX_LINK_LENGTH 2048
 
-/* Parser state structure */
+// Parser state structure
 struct marker_parser {
   marker_config_t    config;
   marker_ref_link_t* ref_links;
@@ -23,13 +23,14 @@ struct marker_parser {
   size_t             line_buffer_size;
 };
 
-/* Forward declarations */
+// Forward declarations
 static marker_result_t parse_inline_content(marker_parser_t* parser, const char* text, size_t* pos,
                                             marker_buffer_t* output, size_t end_pos);
 
-/* Compatibility function for strcasecmp */
-#ifndef strcasecmp
-static int strcasecmp(const char* s1, const char* s2) {
+// Provide strcasecmp on platforms that don't have it (e.g., Windows uses _stricmp)
+// This is needed for case-insensitive comparison of Markdown reference link labels
+#if !defined(HAVE_STRCASECMP) && !defined(strcasecmp)
+static int marker_strcasecmp(const char* s1, const char* s2) {
   while (*s1 && *s2) {
     int c1 = tolower((unsigned char) *s1);
     int c2 = tolower((unsigned char) *s2);
@@ -40,9 +41,10 @@ static int strcasecmp(const char* s1, const char* s2) {
   }
   return tolower((unsigned char) *s1) - tolower((unsigned char) *s2);
 }
+#  define strcasecmp marker_strcasecmp
 #endif
 
-/* HTML entities for escaping */
+// HTML entities for escaping
 static const struct {
   char        ch;
   const char* entity;
@@ -55,7 +57,7 @@ static const struct {
     {0,    NULL    }
 };
 
-/* Version and error handling */
+// Version and error handling
 const char* marker_version(void) { return MARKER_VERSION_STRING; }
 
 const char* marker_error_string(marker_result_t result) {
@@ -81,7 +83,7 @@ const char* marker_error_string(marker_result_t result) {
   }
 }
 
-/* Configuration */
+// Configuration
 void marker_config_init(marker_config_t* config) {
   if (!config)
     return;
@@ -98,7 +100,7 @@ void marker_config_init(marker_config_t* config) {
   config->initial_buffer_size  = DEFAULT_BUFFER_SIZE;
 }
 
-/* Buffer management */
+// Buffer management
 marker_buffer_t* marker_buffer_new(size_t initial_capacity) {
   if (initial_capacity == 0)
     initial_capacity = DEFAULT_BUFFER_SIZE;
@@ -179,7 +181,7 @@ static marker_result_t buffer_append_char(marker_buffer_t* buffer, char ch) {
   return buffer_append(buffer, &ch, 1);
 }
 
-/* Parser management */
+// Parser management
 marker_parser_t* marker_parser_new(const marker_config_t* config) {
   marker_parser_t* parser = malloc(sizeof(marker_parser_t));
   if (!parser)
@@ -215,7 +217,7 @@ void marker_parser_free(marker_parser_t* parser) {
   free(parser);
 }
 
-/* Reference link management */
+// Reference link management
 marker_result_t marker_add_reference_link(marker_parser_t* parser, const char* label,
                                           const char* url, const char* title) {
   if (!parser || !label || !url)
@@ -278,7 +280,7 @@ static marker_ref_link_t* find_reference_link(marker_parser_t* parser, const cha
   return NULL;
 }
 
-/* HTML escaping */
+// HTML escaping
 marker_result_t marker_escape_html(const char* text, char* output, size_t output_size) {
   if (!text || !output || output_size == 0)
     return MARKER_ERROR_NULL_POINTER;
@@ -336,7 +338,7 @@ static marker_result_t append_escaped_html(marker_buffer_t* buffer, const char* 
   return MARKER_OK;
 }
 
-/* Utility functions */
+// Utility functions
 static bool is_whitespace(char ch) { return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r'; }
 
 static bool is_punctuation(char ch) { return ispunct((unsigned char) ch); }
@@ -345,7 +347,7 @@ static void trim_whitespace(char* str) {
   if (!str)
     return;
 
-  /* Trim leading whitespace */
+  // Trim leading whitespace
   char* start = str;
   while (is_whitespace(*start))
     start++;
@@ -354,7 +356,7 @@ static void trim_whitespace(char* str) {
     memmove(str, start, strlen(start) + 1);
   }
 
-  /* Trim trailing whitespace */
+  // Trim trailing whitespace
   size_t len = strlen(str);
   while (len > 0 && is_whitespace(str[len - 1])) {
     str[--len] = '\0';
@@ -367,7 +369,7 @@ static bool starts_with(const char* str, const char* prefix) {
   return strncmp(str, prefix, strlen(prefix)) == 0;
 }
 
-/* Inline parsing functions */
+// Inline parsing functions
 static size_t find_emphasis_end(const char* text, size_t start, char marker, int count) {
   size_t pos = start + count;
 
@@ -382,7 +384,7 @@ static size_t find_emphasis_end(const char* text, size_t start, char marker, int
       }
 
       if (found_count == count) {
-        /* Check that it's not just whitespace before */
+        // Check that it's not just whitespace before
         if (pos > start + count) {
           char prev = text[pos - 1];
           if (!is_whitespace(prev)) {
@@ -394,7 +396,7 @@ static size_t find_emphasis_end(const char* text, size_t start, char marker, int
     pos++;
   }
 
-  return SIZE_MAX; /* Not found */
+  return SIZE_MAX;  // Not found
 }
 
 static marker_result_t parse_link(marker_parser_t* parser, const char* text, size_t* pos,
@@ -404,7 +406,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
   if (text[start] != '[')
     return MARKER_ERROR_INVALID_INPUT;
 
-  /* Find the closing bracket for link text */
+  // Find the closing bracket for link text
   size_t text_start    = start + 1;
   size_t text_end      = text_start;
   int    bracket_count = 0;
@@ -423,12 +425,12 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
   if (text[text_end] != ']')
     return MARKER_ERROR_INVALID_INPUT;
 
-  /* Check for immediate URL in parentheses */
+  // Check for immediate URL in parentheses
   if (text[text_end + 1] == '(') {
     size_t url_start = text_end + 2;
     size_t url_end   = url_start;
 
-    /* Find closing parenthesis */
+    // Find closing parenthesis
     while (text[url_end] && text[url_end] != ')') {
       url_end++;
     }
@@ -436,7 +438,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
     if (text[url_end] != ')')
       return MARKER_ERROR_INVALID_INPUT;
 
-    /* Extract URL and optional title */
+    // Extract URL and optional title
     char url[MAX_LINK_LENGTH];
     char title[MAX_LINK_LENGTH] = {0};
 
@@ -448,7 +450,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
     url[url_len] = '\0';
     trim_whitespace(url);
 
-    /* Check for title in quotes */
+    // Check for title in quotes
     char* title_start = strchr(url, '"');
     if (title_start) {
       *title_start = '\0';
@@ -461,7 +463,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
       trim_whitespace(url);
     }
 
-    /* Generate HTML */
+    // Generate HTML
     marker_result_t result = buffer_append_str(output, "<a href=\"");
     if (result != MARKER_OK)
       return result;
@@ -500,7 +502,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
     if (result != MARKER_OK)
       return result;
 
-    /* Parse inline content of link text */
+    // Parse inline content of link text
     size_t link_text_len = text_end - text_start;
     char*  link_text     = malloc(link_text_len + 1);
     if (!link_text)
@@ -523,7 +525,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
     return MARKER_OK;
   }
 
-  /* Check for reference link */
+  // Check for reference link
   size_t ref_start = text_end + 1;
   if (text[ref_start] == '[') {
     size_t ref_end = ref_start + 1;
@@ -536,7 +538,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
       size_t ref_len = ref_end - ref_start - 1;
 
       if (ref_len == 0) {
-        /* Empty reference - use link text as reference */
+        // Empty reference - use link text as reference
         ref_len = text_end - text_start;
         if (ref_len >= MAX_LINK_LENGTH)
           return MARKER_ERROR_INVALID_INPUT;
@@ -552,7 +554,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
 
       marker_ref_link_t* ref = find_reference_link(parser, ref_label);
       if (ref) {
-        /* Generate HTML for reference link */
+        // Generate HTML for reference link
         marker_result_t result = buffer_append_str(output, "<a href=\"");
         if (result != MARKER_OK)
           return result;
@@ -591,7 +593,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
         if (result != MARKER_OK)
           return result;
 
-        /* Parse link text */
+        // Parse link text
         size_t link_text_len = text_end - text_start;
         char*  link_text     = malloc(link_text_len + 1);
         if (!link_text)
@@ -616,7 +618,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
     }
   }
 
-  /* Check for shortcut reference link [link text] */
+  // Check for shortcut reference link [link text]
   char   ref_label[MAX_LINK_LENGTH];
   size_t link_text_len = text_end - text_start;
   if (link_text_len < MAX_LINK_LENGTH) {
@@ -626,7 +628,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
 
     marker_ref_link_t* ref = find_reference_link(parser, ref_label);
     if (ref) {
-      /* Generate HTML for shortcut reference link */
+      // Generate HTML for shortcut reference link
       marker_result_t result = buffer_append_str(output, "<a href=\"");
       if (result != MARKER_OK)
         return result;
@@ -665,7 +667,7 @@ static marker_result_t parse_link(marker_parser_t* parser, const char* text, siz
       if (result != MARKER_OK)
         return result;
 
-      /* Parse link text */
+      // Parse link text
       char* link_text = malloc(link_text_len + 1);
       if (!link_text)
         return MARKER_ERROR_MEMORY_ALLOCATION;
@@ -698,7 +700,7 @@ static marker_result_t parse_image(marker_parser_t* parser, const char* text, si
   if (text[start] != '!' || text[start + 1] != '[')
     return MARKER_ERROR_INVALID_INPUT;
 
-  /* Find the closing bracket for alt text */
+  // Find the closing bracket for alt text
   size_t alt_start = start + 2;
   size_t alt_end   = alt_start;
 
@@ -709,7 +711,7 @@ static marker_result_t parse_image(marker_parser_t* parser, const char* text, si
   if (text[alt_end] != ']')
     return MARKER_ERROR_INVALID_INPUT;
 
-  /* Check for immediate URL in parentheses */
+  // Check for immediate URL in parentheses
   if (text[alt_end + 1] == '(') {
     size_t url_start = alt_end + 2;
     size_t url_end   = url_start;
@@ -721,7 +723,7 @@ static marker_result_t parse_image(marker_parser_t* parser, const char* text, si
     if (text[url_end] != ')')
       return MARKER_ERROR_INVALID_INPUT;
 
-    /* Extract URL and optional title */
+    // Extract URL and optional title
     char url[MAX_LINK_LENGTH];
     char title[MAX_LINK_LENGTH] = {0};
     char alt[MAX_LINK_LENGTH];
@@ -740,7 +742,7 @@ static marker_result_t parse_image(marker_parser_t* parser, const char* text, si
     memcpy(alt, text + alt_start, alt_len);
     alt[alt_len] = '\0';
 
-    /* Check for title in quotes */
+    // Check for title in quotes
     char* title_start = strchr(url, '"');
     if (title_start) {
       *title_start = '\0';
@@ -753,7 +755,7 @@ static marker_result_t parse_image(marker_parser_t* parser, const char* text, si
       trim_whitespace(url);
     }
 
-    /* Generate HTML */
+    // Generate HTML
     marker_result_t result = buffer_append_str(output, "<img src=\"");
     if (result != MARKER_OK)
       return result;
@@ -889,13 +891,13 @@ static marker_result_t parse_code_span(const char* text, size_t* pos, marker_buf
   if (text[start] != '`')
     return MARKER_ERROR_INVALID_INPUT;
 
-  /* Count opening backticks */
+  // Count opening backticks
   size_t tick_count = 0;
   while (text[start + tick_count] == '`') {
     tick_count++;
   }
 
-  /* Find matching closing backticks */
+  // Find matching closing backticks
   size_t content_start = start + tick_count;
   size_t content_end   = content_start;
 
@@ -910,12 +912,12 @@ static marker_result_t parse_code_span(const char* text, size_t* pos, marker_buf
       }
 
       if (closing_ticks == tick_count) {
-        /* Found matching closing backticks */
+        // Found matching closing backticks
         marker_result_t result = buffer_append_str(output, "<code>");
         if (result != MARKER_OK)
           return result;
 
-        /* Trim one space from each end if present */
+        // Trim one space from each end if present
         size_t trim_start = content_start;
         size_t trim_end   = content_end;
 
@@ -926,7 +928,7 @@ static marker_result_t parse_code_span(const char* text, size_t* pos, marker_buf
           trim_end--;
         }
 
-        /* Escape HTML in code content */
+        // Escape HTML in code content
         for (size_t i = trim_start; i < trim_end; i++) {
           bool found = false;
           for (int j = 0; html_entities[j].ch; j++) {
@@ -967,7 +969,7 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
   while (*pos < end_pos && text[*pos]) {
     char ch = text[*pos];
 
-    /* Handle escape sequences */
+    // Handle escape sequences
     if (ch == '\\' && text[*pos + 1]) {
       char next = text[*pos + 1];
       if (is_punctuation(next)) {
@@ -979,7 +981,7 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
       }
     }
 
-    /* Handle emphasis and strong */
+    // Handle emphasis and strong
     if (ch == '*' || ch == '_') {
       bool is_strong = (text[*pos + 1] == ch);
       int  count     = is_strong ? 2 : 1;
@@ -1018,7 +1020,7 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
       }
     }
 
-    /* Handle strikethrough */
+    // Handle strikethrough
     if (parser->config.enable_strikethrough && ch == '~' && text[*pos + 1] == '~') {
       size_t end = *pos + 2;
       while (text[end] && !(text[end] == '~' && text[end + 1] == '~')) {
@@ -1044,7 +1046,7 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
       }
     }
 
-    /* Handle code spans */
+    // Handle code spans
     if (ch == '`') {
       size_t          old_pos = *pos;
       marker_result_t result  = parse_code_span(text, pos, output);
@@ -1053,7 +1055,7 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
       *pos = old_pos;
     }
 
-    /* Handle images */
+    // Handle images
     if (ch == '!' && text[*pos + 1] == '[') {
       size_t          old_pos = *pos;
       marker_result_t result  = parse_image(parser, text, pos, output);
@@ -1062,7 +1064,7 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
       *pos = old_pos;
     }
 
-    /* Handle links */
+    // Handle links
     if (ch == '[') {
       size_t          old_pos = *pos;
       marker_result_t result  = parse_link(parser, text, pos, output);
@@ -1071,7 +1073,7 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
       *pos = old_pos;
     }
 
-    /* Handle autolinks */
+    // Handle autolinks
     if (parser->config.enable_autolinks && ch == '<') {
       size_t          old_pos = *pos;
       marker_result_t result  = parse_autolink(text, pos, output);
@@ -1080,16 +1082,16 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
       *pos = old_pos;
     }
 
-    /* Handle inline HTML */
+    // Handle inline HTML
     if (parser->config.enable_inline_html && ch == '<') {
-      /* Simple HTML tag detection */
+      // Simple HTML tag detection
       size_t tag_end = *pos + 1;
       while (text[tag_end] && text[tag_end] != '>') {
         tag_end++;
       }
 
       if (text[tag_end] == '>') {
-        /* Pass through HTML tag */
+        // Pass through HTML tag
         marker_result_t result = buffer_append(output, text + *pos, tag_end - *pos + 1);
         if (result != MARKER_OK)
           return result;
@@ -1098,7 +1100,7 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
       }
     }
 
-    /* Handle line breaks */
+    // Handle line breaks
     if (ch == '\n') {
       if (parser->config.hard_line_breaks) {
         marker_result_t result = buffer_append_str(output, "<br>");
@@ -1113,7 +1115,7 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
       continue;
     }
 
-    /* Regular character */
+    // Regular character
     if (parser->config.escape_html) {
       marker_result_t result = append_escaped_html(output, &ch, 1);
       if (result != MARKER_OK)
@@ -1130,7 +1132,7 @@ static marker_result_t parse_inline_content(marker_parser_t* parser, const char*
   return MARKER_OK;
 }
 
-/* Block parsing functions */
+// Block parsing functions
 static bool is_header_line(const char* line) { return line[0] == '#'; }
 
 static bool is_code_fence(const char* line) {
@@ -1144,7 +1146,7 @@ static bool is_list_item(const char* line) {
     return true;
   }
 
-  /* Check for ordered list */
+  // Check for ordered list
   size_t i = 0;
   while (isdigit((unsigned char) line[i]))
     i++;
@@ -1198,7 +1200,7 @@ static marker_result_t parse_header(marker_parser_t* parser, const char* line,
     level++;
   }
 
-  /* Skip whitespace after # marks */
+  // Skip whitespace after # marks
   size_t content_start = level;
   while (line[content_start] == ' ') {
     content_start++;
@@ -1217,7 +1219,7 @@ static marker_result_t parse_header(marker_parser_t* parser, const char* line,
   if (result != MARKER_OK)
     return result;
 
-  /* Parse inline content */
+  // Parse inline content
   size_t pos      = content_start;
   size_t line_len = strlen(line);
   result          = parse_inline_content(parser, line, &pos, output, line_len);
@@ -1251,7 +1253,7 @@ static marker_result_t parse_blockquote(marker_parser_t* parser, const char* lin
   if (result != MARKER_OK)
     return result;
 
-  /* Parse inline content */
+  // Parse inline content
   size_t pos      = content_start;
   size_t line_len = strlen(line);
   result          = parse_inline_content(parser, line, &pos, output, line_len);
@@ -1278,12 +1280,12 @@ static marker_result_t parse_list_item(marker_parser_t* parser, const char* line
     while (isdigit((unsigned char) line[content_start])) {
       content_start++;
     }
-    content_start += 2; /* Skip ". " */
+    content_start += 2;  // skip ". "
   } else {
-    content_start = 2; /* Skip "- " or "* " */
+    content_start = 2;  // skip "- " or "* "
   }
 
-  /* Check for task list */
+  // Check for task list
   bool is_task    = false;
   bool is_checked = false;
 
@@ -1324,7 +1326,7 @@ static marker_result_t parse_list_item(marker_parser_t* parser, const char* line
       return result;
   }
 
-  /* Parse inline content */
+  // Parse inline content
   size_t pos      = content_start;
   size_t line_len = strlen(line);
   result          = parse_inline_content(parser, line, &pos, output, line_len);
@@ -1349,7 +1351,7 @@ static marker_result_t parse_table_row(marker_parser_t* parser, const char* line
   size_t pos      = 0;
   size_t line_len = strlen(line);
 
-  /* Skip leading whitespace and pipe */
+  // Skip leading whitespace and pipe
   while (pos < line_len && (is_whitespace(line[pos]) || line[pos] == '|')) {
     pos++;
   }
@@ -1365,7 +1367,7 @@ static marker_result_t parse_table_row(marker_parser_t* parser, const char* line
     if (result != MARKER_OK)
       return result;
 
-    /* Find end of cell */
+    // Find end of cell
     size_t cell_start = pos;
     while (pos < line_len && line[pos] != '|') {
       pos++;
@@ -1373,7 +1375,7 @@ static marker_result_t parse_table_row(marker_parser_t* parser, const char* line
 
     size_t cell_end = pos;
 
-    /* Trim whitespace from cell content */
+    // Trim whitespace from cell content
     while (cell_end > cell_start && is_whitespace(line[cell_end - 1])) {
       cell_end--;
     }
@@ -1381,7 +1383,7 @@ static marker_result_t parse_table_row(marker_parser_t* parser, const char* line
       cell_start++;
     }
 
-    /* Parse cell content */
+    // Parse cell content
     if (cell_end > cell_start) {
       char* cell_content = malloc(cell_end - cell_start + 1);
       if (!cell_content)
@@ -1407,7 +1409,7 @@ static marker_result_t parse_table_row(marker_parser_t* parser, const char* line
     if (result != MARKER_OK)
       return result;
 
-    /* Skip pipe and whitespace */
+    // Skip pipe and whitespace
     if (pos < line_len && line[pos] == '|') {
       pos++;
     }
@@ -1442,7 +1444,7 @@ static marker_result_t parse_paragraph(marker_parser_t* parser, const char* line
   return MARKER_OK;
 }
 
-/* Main parsing function */
+// Main parsing function
 marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
                              marker_buffer_t* output) {
   if (!parser || !markdown || !output)
@@ -1455,7 +1457,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
   bool        in_table        = false;
 
   while (*p) {
-    /* Extract line */
+    // Extract line
     size_t line_len = 0;
     while (p[line_len] && p[line_len] != '\n') {
       line_len++;
@@ -1475,7 +1477,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
     char* line = parser->line_buffer;
     trim_whitespace(line);
 
-    /* Handle code blocks */
+    // Handle code blocks
     if (is_code_fence(line)) {
       if (!in_code_block) {
         marker_result_t result = buffer_append_str(output, "<pre><code>");
@@ -1489,7 +1491,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
         in_code_block = false;
       }
     } else if (in_code_block) {
-      /* Inside code block - output verbatim with HTML escaping */
+      // Inside code block - output verbatim with HTML escaping
       marker_result_t result = append_escaped_html(output, line, strlen(line));
       if (result != MARKER_OK)
         return result;
@@ -1497,11 +1499,11 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
       if (result != MARKER_OK)
         return result;
     } else {
-      /* Check for reference link definitions */
+      // Check for reference link definitions
       if (line[0] == '[') {
         char* closing = strchr(line, ']');
         if (closing && closing[1] == ':') {
-          /* Parse reference link definition */
+          // Parse reference link definition
           size_t label_len = closing - line - 1;
           char*  label     = malloc(label_len + 1);
           if (label) {
@@ -1549,7 +1551,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
             free(label);
           }
 
-          /* Skip to next line */
+          // Skip to next line
           p += line_len;
           if (*p == '\n')
             p++;
@@ -1557,7 +1559,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
         }
       }
 
-      /* Handle empty lines */
+      // Handle empty lines
       if (strlen(line) == 0) {
         if (in_list) {
           marker_result_t result =
@@ -1576,7 +1578,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
         if (result != MARKER_OK)
           return result;
       }
-      /* Handle headers */
+      // Handle headers
       else if (is_header_line(line)) {
         if (in_list) {
           marker_result_t result =
@@ -1595,7 +1597,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
         if (result != MARKER_OK)
           return result;
       }
-      /* Handle horizontal rules */
+      // Handle horizontal rules
       else if (is_horizontal_rule(line)) {
         if (in_list) {
           marker_result_t result =
@@ -1614,7 +1616,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
         if (result != MARKER_OK)
           return result;
       }
-      /* Handle blockquotes */
+      // Handle blockquotes
       else if (is_blockquote(line)) {
         if (in_list) {
           marker_result_t result =
@@ -1633,7 +1635,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
         if (result != MARKER_OK)
           return result;
       }
-      /* Handle list items */
+      // Handle list items
       else if (is_list_item(line)) {
         bool item_is_ordered;
 
@@ -1644,11 +1646,11 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
           in_table = false;
         }
 
-        /* Check if we need to start a new list */
+        // Check if we need to start a new list
         if (!in_list) {
-          /* Determine list type from first item */
+          // Determine list type from first item
           bool dummy;
-          parse_list_item(parser, line, NULL, &dummy); /* Just to get the type */
+          parse_list_item(parser, line, NULL, &dummy);  // Just to get the type
           list_is_ordered = isdigit((unsigned char) line[0]);
 
           marker_result_t result = buffer_append_str(output, list_is_ordered ? "<ol>\n" : "<ul>\n");
@@ -1661,7 +1663,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
         if (result != MARKER_OK)
           return result;
       }
-      /* Handle tables */
+      // Handle tables
       else if (parser->config.enable_tables && strchr(line, '|')) {
         if (in_list) {
           marker_result_t result =
@@ -1671,7 +1673,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
           in_list = false;
         }
 
-        /* Check if next line is table separator */
+        // Check if next line is table separator
         const char* next_line_start = p + line_len;
         if (*next_line_start == '\n')
           next_line_start++;
@@ -1688,7 +1690,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
           trim_whitespace(next_line);
 
           if (is_table_separator(next_line)) {
-            /* Start table */
+            // Start table
             if (!in_table) {
               marker_result_t result = buffer_append_str(output, "<table>\n<thead>\n");
               if (result != MARKER_OK) {
@@ -1697,7 +1699,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
               }
             }
 
-            /* Parse header row */
+            // Parse header row
             marker_result_t result = parse_table_row(parser, line, output, true);
             if (result != MARKER_OK) {
               free(next_line);
@@ -1712,7 +1714,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
 
             in_table = true;
 
-            /* Skip separator line */
+            // Skip separator line
             p = next_line_start + next_line_len;
             if (*p == '\n')
               p++;
@@ -1724,18 +1726,18 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
         }
 
         if (in_table) {
-          /* Parse table data row */
+          // Parse table data row
           marker_result_t result = parse_table_row(parser, line, output, false);
           if (result != MARKER_OK)
             return result;
         } else {
-          /* Regular paragraph */
+          // Regular paragraph
           marker_result_t result = parse_paragraph(parser, line, output);
           if (result != MARKER_OK)
             return result;
         }
       }
-      /* Handle regular paragraphs */
+      // Handle regular paragraphs
       else {
         if (in_list) {
           marker_result_t result =
@@ -1756,13 +1758,13 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
       }
     }
 
-    /* Move to next line */
+    // Move to next line
     p += line_len;
     if (*p == '\n')
       p++;
   }
 
-  /* Close any remaining open elements */
+  // Close any remaining open elements
   if (in_code_block) {
     marker_result_t result = buffer_append_str(output, "</code></pre>\n");
     if (result != MARKER_OK)
@@ -1782,7 +1784,7 @@ marker_result_t marker_parse(marker_parser_t* parser, const char* markdown,
   return MARKER_OK;
 }
 
-/* Simplified API functions */
+// Simplified API functions
 marker_result_t marker_to_html(const char* markdown, char* html, size_t html_size,
                                const char* css_file) {
   if (!markdown || !html || html_size == 0)
@@ -1798,7 +1800,7 @@ marker_result_t marker_to_html(const char* markdown, char* html, size_t html_siz
     return MARKER_ERROR_MEMORY_ALLOCATION;
   }
 
-  /* Add HTML document structure */
+  // Add HTML document structure
   marker_result_t result = buffer_append_str(buffer, "<!DOCTYPE html><html><head>");
   if (result != MARKER_OK) {
     marker_buffer_free(buffer);
@@ -1834,7 +1836,7 @@ marker_result_t marker_to_html(const char* markdown, char* html, size_t html_siz
     return result;
   }
 
-  /* Parse markdown content */
+  // Parse markdown content
   result = marker_parse(parser, markdown, buffer);
   if (result != MARKER_OK) {
     marker_buffer_free(buffer);
@@ -1849,7 +1851,7 @@ marker_result_t marker_to_html(const char* markdown, char* html, size_t html_siz
     return result;
   }
 
-  /* Copy to output buffer */
+  // Copy to output buffer
   size_t output_size = marker_buffer_size(buffer);
   if (output_size >= html_size) {
     marker_buffer_free(buffer);
@@ -1913,7 +1915,7 @@ marker_result_t marker_file_to_html_file(const char* input_filename, const char*
     return MARKER_ERROR_MEMORY_ALLOCATION;
   }
 
-  /* Add HTML document structure */
+  // Add HTML document structure
   marker_result_t result = buffer_append_str(buffer, "<!DOCTYPE html><html><head>");
   if (result == MARKER_OK && css_file && strlen(css_file) > 0) {
     result = buffer_append_str(buffer, "<link rel=\"stylesheet\" href=\"");
@@ -1975,7 +1977,7 @@ bool marker_validate(const char* markdown, char* error_msg, size_t error_msg_siz
     return false;
   }
 
-  /* Basic validation - check for common syntax errors */
+  // Basic validation - check for common syntax errors
   const char* p                = markdown;
   int         code_fence_count = 0;
 
@@ -1999,7 +2001,7 @@ bool marker_validate(const char* markdown, char* error_msg, size_t error_msg_siz
   return true;
 }
 
-/* Legacy API compatibility */
+// Legacy API compatibility
 void md_to_html(const char* markdown, char* html, size_t html_size, const char* css_file) {
   marker_to_html(markdown, html, html_size, css_file);
 }
