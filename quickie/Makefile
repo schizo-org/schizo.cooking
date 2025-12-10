@@ -11,7 +11,7 @@ DEPS := $(IRIS_LIB) $(MARKER_LIB)
 all: $(TARGET)
 
 $(TARGET): $(QUICKIE_OBJ) $(DEPS)
-	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(QUICKIE_OBJ) $(IRIS_LIB) $(MARKER_LIB)
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(QUICKIE_OBJ) $(IRIS_LIB) $(MARKER_LIB) -lpthread
 
 $(QUICKIE_OBJ): $(QUICKIE_SRC)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@

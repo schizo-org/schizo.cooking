@@ -9,14 +9,6 @@ do make an effort to ensure stability and safety, there has been no proper
 security audits and it is very likely that I have missed something while
 reviewing my own code. Happens to the best of us, you know?
 
-Worst markdown parser on the face of earth, written in C because I enjoy
-shooting myself in the foot. Designed with a user in mind, but not for yours.
-
-Please do not try to use Marker in a real production scenario, at least not
-unless you are **very** sure that you know what you are doing. You are, however,
-very welcome mess around with it and submit PRs to improve functionality. This
-project welcomes any contributions
-
 ## Features
 
 Marker supports the entirety of CommonMark, and some extensions of the GFM spec.

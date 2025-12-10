@@ -1,28 +1,39 @@
 # Quickie
 
 <!-- markdownlint-disable MD033 -->
-<h6>Pronounced like the food</h6>
+<h6>
+  Pronounced like the <a href="https://en.wikipedia.org/wiki/Quiche">the food</a>
+</h6>
 
 ---
 
-Quickie is a minimal glue "CMS" for the [schizo.cooking](https://schizo.cooking)
-project. It combines the [Iris](../iris) web server and the [Marker](../marker)
-markdown renderer to provide a simple, full of shit static site generator and
-server for Markdown content. The goal is to write the worst code ever conceived.
-Does it work? Yes. Should it work? No.
+[schizo.cooking]: https://schizo.cooking
+[Iris]: ../iris
+[Marker]: ../marker
 
-## What does it do?
+Quickie is the minimalistic glue code and our very own "CMS" for the
+[schizo.cooking] project. It wraps and combines the [Iris] webserver, and the
+[Marker] markdown renderer to provide a simple and _entirely_ full of shit
+static site "generator" that serves our most based takes. The goal is to write
+the best worst code ever conceived. Does it work? Yes. _Should_ it work? No.
 
-- Recursively scans a directory for Markdown (`.md`) files.
-- Converts all found Markdown files to HTML using Marker.
-- Serves the generated HTML files using the Iris HTTP server.
-- Optionally allows you to separate the source Markdown directory and the
+## What The Hell Does It Do
+
+Quickie is very simple on paper. Enforcing C99 has not made it any more simple,
+but it's capabilities are simple at the very least. Quickie can:
+
+- Recursively scan a directory for Markdown (`.md`) files.
+- Convert all found Markdown files to HTML using Marker.
+- Serve the generated HTML files using the Iris HTTP server optionally with
+  dynamic rendering.
+- Optionally allow you to separate the source Markdown directory and the
   output/served HTML directory.
 
-There is **no upload system**. Quickie is intended for environments where
-Markdown files are managed by other means (e.g., git, rsync, manual copy). If
-you ask for an auth-based CMS, then you will be dropkicked. Sorry, I make the
-rules.
+While Quickie does support dynamic rendering from a directory, there is **no
+upload system**; you should handle uploads yourself if you plan to run Quickie.
+This is because Quickie is intended for environments where Markdown files are
+managed by other means (e.g., git, rsync, manual copy). If you ask for an
+auth-based CMS, then you will be _dropkicked_. Sorry, not sorry.
 
 ## Usage
 
@@ -43,14 +54,30 @@ quickie [-b ADDRESS] [-m MD_DIR] [-o HTML_DIR] [-p PORT]
 
 This will:
 
-- Scan `./markdown` for `.md` files
-- Convert them to HTML in `./public_html` (preserving directory structure)
-- Serve the HTML files at `http://localhost:8081/`
+1. Scan and watch `./markdown` for file changes and automatically regenerate
+   modified files
+2. Convert them to HTML in `./public_html` (preserving directory structure)
+3. Serve the HTML files at `http://localhost:8081/`
+
+### Live Reload and File Watching
+
+As of December 2025 Quickie uses Linux `inotify` API to watch the Markdown
+source directory for changes. This is referred to as _dynamic rendering_ in
+documentation and the project source. That said, when a `.md` file is created,
+modified, or deleted, Quickie automatically:
+
+- Regenerates the corresponding HTML file for modified/created files
+- Deletes the corresponding HTML file when source is removed
+- Recursively watches newly created subdirectories
+
+The file watcher runs in a separate thread and operates continuously while the
+server is running. No manual intervention or server restart is required to pick
+up changes. Simply edit your Markdown files and refresh your browser.
 
 ## Additional Notes
 
-Those only apply if you plan to ~~have a quickie~~ run this program on your
-system.
+Some things worth nothing if you plan to ~~have a quickie~~ run this godforsaken
+program on your system.
 
 ### Unicode and Non-ASCII Filenames
 

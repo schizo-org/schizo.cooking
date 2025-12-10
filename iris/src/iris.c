@@ -16,17 +16,19 @@
 #include <time.h>
 #include <unistd.h>
 
-static iris_mime_entry mime_types[] = {{".html", "text/html"},
-                                       {".htm", "text/html"},
-                                       {".css", "text/css"},
-                                       {".js", "application/javascript"},
-                                       {".json", "application/json"},
-                                       {".png", "image/png"},
-                                       {".jpg", "image/jpeg"},
-                                       {".jpeg", "image/jpeg"},
-                                       {".gif", "image/gif"},
-                                       {".txt", "text/plain"},
-                                       {NULL, "application/octet-stream"}};
+static iris_mime_entry mime_types[] = {
+    {".html", "text/html"               },
+    {".htm",  "text/html"               },
+    {".css",  "text/css"                },
+    {".js",   "application/javascript"  },
+    {".json", "application/json"        },
+    {".png",  "image/png"               },
+    {".jpg",  "image/jpeg"              },
+    {".jpeg", "image/jpeg"              },
+    {".gif",  "image/gif"               },
+    {".txt",  "text/plain"              },
+    {NULL,    "application/octet-stream"}
+};
 
 const char* iris_get_mime_type(const char* path) {
   const char* ext = strrchr(path, '.');
