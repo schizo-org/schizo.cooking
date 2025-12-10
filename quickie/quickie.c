@@ -1,14 +1,17 @@
 #define _POSIX_C_SOURCE 200112L
+#define _GNU_SOURCE
 #include "../iris/src/iris.h"
 #include "../marker/src/marker.h"
 
 #include <dirent.h>
 #include <errno.h>
 #include <limits.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/inotify.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
@@ -20,6 +23,9 @@
 #define QUICKIE_DEFAULT_PORT 8080
 #define QUICKIE_DEFAULT_MD_DIR "."
 #define QUICKIE_DEFAULT_HTML_DIR "."
+#define QUICKIE_INOTIFY_EVENT_SIZE (sizeof(struct inotify_event))
+#define QUICKIE_INOTIFY_BUF_LEN (1024 * (QUICKIE_INOTIFY_EVENT_SIZE + 16))
+#define QUICKIE_MAX_WATCHES 1024
 
 // Log with timestamp and error level
 // This could have been a library, but I like this as it is.
@@ -87,6 +93,26 @@ static int                    quickie_entry_capacity = 0;
 
 #define QUICKIE_INIT_ENTRY_CAPACITY 128
 
+// Watch descriptor mapping for inotify
+typedef struct {
+  int  wd;
+  char path[QUICKIE_MAX_PATH];
+} quickie_watch_entry;
+
+// Global watch state
+typedef struct {
+  int                 inotify_fd;
+  quickie_watch_entry watches[QUICKIE_MAX_WATCHES];
+  int                 watch_count;
+  char                md_base_dir[QUICKIE_MAX_PATH];
+  char                html_base_dir[QUICKIE_MAX_PATH];
+  char                css_file[QUICKIE_MAX_PATH];
+  pthread_t           watch_thread;
+  volatile int        running;
+} quickie_watch_state;
+
+static quickie_watch_state* g_watch_state = NULL;
+
 // Ensure quickie_entries is allocated and has space for one more entry
 // You could call it a quickfix. Ha.
 static int quickie_fix_capacity(void) {
@@ -99,7 +125,7 @@ static int quickie_fix_capacity(void) {
     int new_capacity =
         quickie_entry_capacity > 0 ? quickie_entry_capacity * 2 : QUICKIE_INIT_ENTRY_CAPACITY;
 
-    if (new_capacity > INT_MAX / (int)sizeof(quickie_md_html_entry)) {
+    if (new_capacity > INT_MAX / (int) sizeof(quickie_md_html_entry)) {
       log_error("Allocation would overflow");
       return 0;
     }
@@ -270,6 +296,286 @@ void quickie_convert_all(const char* md_base_dir, const char* html_base_dir, con
   }
 }
 
+// Add watch for a directory
+static int quickie_add_watch(quickie_watch_state* state, const char* dir_path) {
+  if (!state || !dir_path || state->watch_count >= QUICKIE_MAX_WATCHES)
+    return -1;
+
+  int wd = inotify_add_watch(state->inotify_fd, dir_path,
+                             IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO);
+  if (wd < 0) {
+    log_error("Failed to add watch for %s: %s", dir_path, strerror(errno));
+    return -1;
+  }
+
+  state->watches[state->watch_count].wd = wd;
+  strncpy(state->watches[state->watch_count].path, dir_path, QUICKIE_MAX_PATH - 1);
+  state->watches[state->watch_count].path[QUICKIE_MAX_PATH - 1] = '\0';
+  state->watch_count++;
+
+  return wd;
+}
+
+// Find path for a watch descriptor
+static const char* quickie_find_watch_path(quickie_watch_state* state, int wd) {
+  for (int i = 0; i < state->watch_count; ++i) {
+    if (state->watches[i].wd == wd) {
+      return state->watches[i].path;
+    }
+  }
+  return NULL;
+}
+
+// Recursively add watches for all subdirectories
+static void quickie_add_watches_recursive(quickie_watch_state* state, const char* base_dir,
+                                          const char* rel_dir) {
+  char dir_path[QUICKIE_MAX_PATH];
+  int  dir_path_len;
+
+  if (rel_dir && strlen(rel_dir) > 0) {
+    dir_path_len = snprintf(dir_path, sizeof(dir_path), "%s/%s", base_dir, rel_dir);
+  } else {
+    dir_path_len = snprintf(dir_path, sizeof(dir_path), "%s", base_dir);
+  }
+
+  if (dir_path_len < 0 || dir_path_len >= (int) sizeof(dir_path)) {
+    log_error("Directory path too long");
+    return;
+  }
+
+  quickie_add_watch(state, dir_path);
+
+  DIR* dir = opendir(dir_path);
+  if (!dir)
+    return;
+
+  struct dirent* entry;
+  while ((entry = readdir(dir))) {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+      continue;
+
+    char rel_path[QUICKIE_MAX_PATH];
+    if (rel_dir && strlen(rel_dir) > 0) {
+      snprintf(rel_path, sizeof(rel_path), "%s/%s", rel_dir, entry->d_name);
+    } else {
+      snprintf(rel_path, sizeof(rel_path), "%s", entry->d_name);
+    }
+
+    char full_path[QUICKIE_MAX_PATH];
+    snprintf(full_path, sizeof(full_path), "%s/%s", base_dir, rel_path);
+
+    struct stat st;
+    if (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+      quickie_add_watches_recursive(state, base_dir, rel_path);
+    }
+  }
+  closedir(dir);
+}
+
+// Convert a single markdown file to HTML
+static void quickie_convert_single(const char* md_base_dir, const char* html_base_dir,
+                                   const char* rel_md_path, const char* css_file) {
+  char md_full[QUICKIE_MAX_PATH];
+  char html_rel[QUICKIE_MAX_PATH];
+  char html_full[QUICKIE_MAX_PATH];
+
+  // Build full markdown path
+  int md_full_len = snprintf(md_full, sizeof(md_full), "%s/%s", md_base_dir, rel_md_path);
+  if (md_full_len < 0 || md_full_len >= (int) sizeof(md_full)) {
+    log_error("Markdown file path too long: %s/%s", md_base_dir, rel_md_path);
+    return;
+  }
+
+  // Build relative HTML path (.md -> .html)
+  strncpy(html_rel, rel_md_path, sizeof(html_rel) - 1);
+  html_rel[sizeof(html_rel) - 1] = '\0';
+  char* ext                      = strrchr(html_rel, '.');
+  if (ext && strcmp(ext, ".md") == 0) {
+    strcpy(ext, ".html");
+  } else {
+    return;  // not a .md file
+  }
+
+  // Build full HTML path
+  int html_full_len = snprintf(html_full, sizeof(html_full), "%s/%s", html_base_dir, html_rel);
+  if (html_full_len < 0 || html_full_len >= (int) sizeof(html_full)) {
+    log_error("HTML file path too long: %s/%s", html_base_dir, html_rel);
+    return;
+  }
+
+  char* slash = strrchr(html_full, '/');
+  if (slash) {
+    *slash = '\0';
+    mkdir_recursive(html_full, 0755);
+    *slash = '/';
+  }
+
+  char html_tmp[QUICKIE_MAX_PATH];
+  snprintf(html_tmp, sizeof(html_tmp), "%s.tmp", html_full);
+
+  int res = md_file_to_html_file(md_full, html_tmp, css_file);
+  if (res == 0) {
+    if (rename(html_tmp, html_full) != 0) {
+      log_error("Failed to rename temp file %s to %s: %s", html_tmp, html_full, strerror(errno));
+      unlink(html_tmp);
+    }
+  } else {
+    log_error("Failed to convert %s to HTML (error %d)", md_full, res);
+    unlink(html_tmp);
+  }
+}
+
+// Delete corresponding HTML file for a deleted markdown file
+static void quickie_delete_html(const char* html_base_dir, const char* rel_md_path) {
+  char html_rel[QUICKIE_MAX_PATH];
+  char html_full[QUICKIE_MAX_PATH];
+
+  // Build relative HTML path
+  strncpy(html_rel, rel_md_path, sizeof(html_rel) - 1);
+  html_rel[sizeof(html_rel) - 1] = '\0';
+  char* ext                      = strrchr(html_rel, '.');
+  if (ext && strcmp(ext, ".md") == 0) {
+    strcpy(ext, ".html");
+  } else {
+    return;
+  }
+
+  // Build full HTML path
+  snprintf(html_full, sizeof(html_full), "%s/%s", html_base_dir, html_rel);
+
+  if (unlink(html_full) == 0) {
+    printf("Deleted HTML file: %s\n", html_full);
+  }
+}
+
+// Thread watcher
+static void* quickie_threadwatcher(void* arg) {
+  quickie_watch_state* state = (quickie_watch_state*) arg;
+  char                 buffer[QUICKIE_INOTIFY_BUF_LEN];
+
+  printf("File watcher started for directory: %s\n", state->md_base_dir);
+
+  while (state->running) {
+    int length = read(state->inotify_fd, buffer, sizeof(buffer));
+    if (length < 0) {
+      if (errno == EINTR)
+        continue;
+      log_error("inotify read error: %s", strerror(errno));
+      break;
+    }
+
+    int i = 0;
+    while (i < length) {
+      struct inotify_event* event = (struct inotify_event*) &buffer[i];
+
+      if (event->len > 0) {
+        const char* watch_path = quickie_find_watch_path(state, event->wd);
+        if (!watch_path) {
+          i += QUICKIE_INOTIFY_EVENT_SIZE + event->len;
+          continue;
+        }
+
+        // Build relative path from markdown base directory
+        const char* rel_base = watch_path + strlen(state->md_base_dir);
+        if (*rel_base == '/')
+          rel_base++;
+
+        char rel_path[QUICKIE_MAX_PATH];
+        if (strlen(rel_base) > 0) {
+          snprintf(rel_path, sizeof(rel_path), "%s/%s", rel_base, event->name);
+        } else {
+          snprintf(rel_path, sizeof(rel_path), "%s", event->name);
+        }
+
+        // Check if it's a .md file
+        const char* ext        = strrchr(event->name, '.');
+        int         is_md_file = (ext && strcmp(ext, ".md") == 0);
+
+        // Handle directory events
+        if (event->mask & IN_ISDIR) {
+          if (event->mask & (IN_CREATE | IN_MOVED_TO)) {
+            char new_dir[QUICKIE_MAX_PATH];
+            snprintf(new_dir, sizeof(new_dir), "%s/%s", watch_path, event->name);
+            quickie_add_watches_recursive(state, state->md_base_dir, rel_path);
+            printf("Added watch for new directory: %s\n", new_dir);
+          }
+        }
+        // Handle file events for .md files
+        else if (is_md_file) {
+          if (event->mask & (IN_CREATE | IN_MODIFY | IN_MOVED_TO)) {
+            printf("Detected change: %s\n", rel_path);
+            quickie_convert_single(state->md_base_dir, state->html_base_dir, rel_path,
+                                   strlen(state->css_file) > 0 ? state->css_file : NULL);
+          } else if (event->mask & (IN_DELETE | IN_MOVED_FROM)) {
+            printf("Detected deletion: %s\n", rel_path);
+            quickie_delete_html(state->html_base_dir, rel_path);
+          }
+        }
+      }
+
+      i += QUICKIE_INOTIFY_EVENT_SIZE + event->len;
+    }
+  }
+
+  printf("File watcher stopped\n");
+  return NULL;
+}
+
+// Initialize watch state
+static quickie_watch_state* quickie_watcher_init(const char* md_base_dir, const char* html_base_dir,
+                                                 const char* css_file) {
+  quickie_watch_state* state = malloc(sizeof(quickie_watch_state));
+  if (!state) {
+    log_error("Failed to allocate watch state");
+    return NULL;
+  }
+
+  memset(state, 0, sizeof(quickie_watch_state));
+
+  state->inotify_fd = inotify_init1(IN_NONBLOCK);
+  if (state->inotify_fd < 0) {
+    log_error("Failed to initialize inotify: %s", strerror(errno));
+    free(state);
+    return NULL;
+  }
+
+  strncpy(state->md_base_dir, md_base_dir, QUICKIE_MAX_PATH - 1);
+  strncpy(state->html_base_dir, html_base_dir, QUICKIE_MAX_PATH - 1);
+  if (css_file) {
+    strncpy(state->css_file, css_file, QUICKIE_MAX_PATH - 1);
+  }
+  state->running = 1;
+
+  // Add watches recursively
+  quickie_add_watches_recursive(state, md_base_dir, NULL);
+
+  // Start watch thread
+  if (pthread_create(&state->watch_thread, NULL, quickie_threadwatcher, state) != 0) {
+    log_error("Failed to create watch thread: %s", strerror(errno));
+    close(state->inotify_fd);
+    free(state);
+    return NULL;
+  }
+
+  return state;
+}
+
+// Cleanup watch state
+static void quickie_cleanup_watch(quickie_watch_state* state) {
+  if (!state)
+    return;
+
+  state->running = 0;
+  pthread_join(state->watch_thread, NULL);
+
+  for (int i = 0; i < state->watch_count; ++i) {
+    inotify_rm_watch(state->inotify_fd, state->watches[i].wd);
+  }
+
+  close(state->inotify_fd);
+  free(state);
+}
+
 // Serve HTML files using iris, but intercept requests for .md and serve the
 // HTML
 int quickie_serve(const char* address, const char* md_base_dir, const char* html_base_dir,
@@ -302,7 +608,21 @@ int quickie_serve(const char* address, const char* md_base_dir, const char* html
   quickie_scan_markdown(md_base_dir, NULL);
   quickie_convert_all(md_base_dir, html_base_dir, css_file);
 
-  return iris_start(address, html_base_dir, port);
+  // Initialize file watcher for dynamic updates
+  g_watch_state = quickie_watcher_init(md_base_dir, html_base_dir, css_file);
+  if (!g_watch_state) {
+    log_error("Failed to initialize file watcher - continuing without live reload");
+  }
+
+  int result = iris_start(address, html_base_dir, port);
+
+  // Cleanup watch state on shutdown
+  if (g_watch_state) {
+    quickie_cleanup_watch(g_watch_state);
+    g_watch_state = NULL;
+  }
+
+  return result;
 }
 
 // Clap solves this
@@ -412,6 +732,8 @@ int main(int argc, char* argv[]) {
 
   int result =
       quickie_serve(address, md_dir, html_dir, strlen(css_file) > 0 ? css_file : NULL, port);
+
   free(quickie_entries);
+
   return result;
 }
