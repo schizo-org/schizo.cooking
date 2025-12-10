@@ -301,6 +301,16 @@ static int quickie_add_watch(quickie_watch_state* state, const char* dir_path) {
   if (!state || !dir_path || state->watch_count >= QUICKIE_MAX_WATCHES)
     return -1;
 
+  // Validate path length BEFORE registering the watch
+  size_t path_len = strlen(dir_path);
+  if (path_len >= QUICKIE_MAX_PATH) {
+    log_error("Directory path too long for watch: %s (len=%zu, max=%d)", dir_path, path_len,
+              QUICKIE_MAX_PATH - 1);
+    errno = ENAMETOOLONG;
+    return -1;
+  }
+
+  // Only register watch if path fits in our storage
   int wd = inotify_add_watch(state->inotify_fd, dir_path,
                              IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_FROM | IN_MOVED_TO);
   if (wd < 0) {
@@ -308,9 +318,10 @@ static int quickie_add_watch(quickie_watch_state* state, const char* dir_path) {
     return -1;
   }
 
+  // Store the full path (guaranteed to fit by check above)
   state->watches[state->watch_count].wd = wd;
-  strncpy(state->watches[state->watch_count].path, dir_path, QUICKIE_MAX_PATH - 1);
-  state->watches[state->watch_count].path[QUICKIE_MAX_PATH - 1] = '\0';
+  memcpy(state->watches[state->watch_count].path, dir_path, path_len);
+  state->watches[state->watch_count].path[path_len] = '\0';
   state->watch_count++;
 
   return wd;
@@ -343,7 +354,11 @@ static void quickie_add_watches_recursive(quickie_watch_state* state, const char
     return;
   }
 
-  quickie_add_watch(state, dir_path);
+  // Only continue if watch registration succeeds
+  if (quickie_add_watch(state, dir_path) < 0) {
+    // Error already logged in quickie_add_watch
+    return;
+  }
 
   DIR* dir = opendir(dir_path);
   if (!dir)
@@ -355,14 +370,25 @@ static void quickie_add_watches_recursive(quickie_watch_state* state, const char
       continue;
 
     char rel_path[QUICKIE_MAX_PATH];
+    int  rel_path_len;
     if (rel_dir && strlen(rel_dir) > 0) {
-      snprintf(rel_path, sizeof(rel_path), "%s/%s", rel_dir, entry->d_name);
+      rel_path_len = snprintf(rel_path, sizeof(rel_path), "%s/%s", rel_dir, entry->d_name);
     } else {
-      snprintf(rel_path, sizeof(rel_path), "%s", entry->d_name);
+      rel_path_len = snprintf(rel_path, sizeof(rel_path), "%s", entry->d_name);
+    }
+
+    if (rel_path_len < 0 || rel_path_len >= (int) sizeof(rel_path)) {
+      log_error("Relative path too long: %s/%s", rel_dir, entry->d_name);
+      continue;
     }
 
     char full_path[QUICKIE_MAX_PATH];
-    snprintf(full_path, sizeof(full_path), "%s/%s", base_dir, rel_path);
+    int  full_path_len = snprintf(full_path, sizeof(full_path), "%s/%s", base_dir, rel_path);
+
+    if (full_path_len < 0 || full_path_len >= (int) sizeof(full_path)) {
+      log_error("Full path too long: %s/%s", base_dir, rel_path);
+      continue;
+    }
 
     struct stat st;
     if (stat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
@@ -411,7 +437,12 @@ static void quickie_convert_single(const char* md_base_dir, const char* html_bas
   }
 
   char html_tmp[QUICKIE_MAX_PATH];
-  snprintf(html_tmp, sizeof(html_tmp), "%s.tmp", html_full);
+  int  html_tmp_len = snprintf(html_tmp, sizeof(html_tmp), "%s.tmp", html_full);
+
+  if (html_tmp_len < 0 || html_tmp_len >= (int) sizeof(html_tmp)) {
+    log_error("Temporary HTML file path too long: %s.tmp", html_full);
+    return;
+  }
 
   int res = md_file_to_html_file(md_full, html_tmp, css_file);
   if (res == 0) {
@@ -441,7 +472,12 @@ static void quickie_delete_html(const char* html_base_dir, const char* rel_md_pa
   }
 
   // Build full HTML path
-  snprintf(html_full, sizeof(html_full), "%s/%s", html_base_dir, html_rel);
+  int html_full_len = snprintf(html_full, sizeof(html_full), "%s/%s", html_base_dir, html_rel);
+
+  if (html_full_len < 0 || html_full_len >= (int) sizeof(html_full)) {
+    log_error("HTML file path too long: %s/%s", html_base_dir, html_rel);
+    return;
+  }
 
   if (unlink(html_full) == 0) {
     printf("Deleted HTML file: %s\n", html_full);
