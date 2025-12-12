@@ -532,7 +532,7 @@ static quickie_watch_state* quickie_watcher_init(const char* md_base_dir, const 
 
   memset(state, 0, sizeof(quickie_watch_state));
 
-  state->inotify_fd = inotify_init1(IN_NONBLOCK);
+  state->inotify_fd = inotify_init();
   if (state->inotify_fd < 0) {
     log_error("Failed to initialize inotify: %s", strerror(errno));
     free(state);
